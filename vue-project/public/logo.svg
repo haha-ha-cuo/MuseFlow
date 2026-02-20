@@ -1,0 +1,27 @@
+<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF5B66;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FA233B;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+      <feOffset dx="0" dy="4" result="offsetblur" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="90" height="90" rx="22" fill="url(#bg)" filter="url(#shadow)" />
+  <g stroke="white" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Note Heads -->
+    <circle cx="30" cy="70" r="9" />
+    <circle cx="63" cy="65" r="9" />
+    <!-- Stems and Beam -->
+    <path d="M39 70 V28 L72 20 V65" />
+  </g>
+</svg>
