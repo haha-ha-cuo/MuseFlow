@@ -8,7 +8,6 @@ class Song(db.Model):
     cover = db.Column(db.String(200), nullable=True)
     url = db.Column(db.String(200), nullable=False)
     source = db.Column(db.String(100), nullable=False)
-    duration = db.Column(db.Integer, nullable=False)
 
     def toDict(self):
         return {
@@ -18,5 +17,4 @@ class Song(db.Model):
             "cover": self.cover,
             "url": self.url,
             "source": self.source,
-            "duration": self.duration
         }
