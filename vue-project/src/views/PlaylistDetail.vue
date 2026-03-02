@@ -132,11 +132,16 @@ const handleFileSelect = (event, type) => {
   }
 }
 
+const isUploading = ref(false)
+
 const submitUpload = async () => {
   if (!uploadForm.value.audioFile) {
     triggerToast('Please select an audio file.', 'error')
     return
   }
+  
+  if (isUploading.value) return
+  isUploading.value = true
 
   const formData = new FormData()
   formData.append('file', uploadForm.value.audioFile)
@@ -145,7 +150,7 @@ const submitUpload = async () => {
   // if (uploadForm.value.coverFile) formData.append('cover', uploadForm.value.coverFile)
 
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/upload', {
+    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
       method: 'POST',
       body: formData
     })
@@ -168,6 +173,8 @@ const submitUpload = async () => {
   } catch (error) {
     console.error('上传出错:', error)
     triggerToast('Upload error, please check backend', 'error')
+  } finally {
+    isUploading.value = false
   }
 }
 
@@ -179,7 +186,7 @@ const handleUploadCover = async (event) => {
   formData.append('file', file)
 
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/upload', {
+    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
       method: 'POST',
       body: formData
     })
@@ -199,7 +206,13 @@ const handleUploadCover = async (event) => {
   }
 }
 
+
+const isDeleting = ref(false)
+
 const handleDelete = async (song) => {
+  if (isDeleting.value) return
+  isDeleting.value = true
+  
   try {
     const response = await fetch(`http://127.0.0.1:5000/api/songs/${song.id}`, {
       method: 'DELETE'
@@ -221,6 +234,8 @@ const handleDelete = async (song) => {
   } catch (error) {
     console.error('删除出错:', error)
     triggerToast('Delete error, please check backend', 'error')
+  } finally {
+    isDeleting.value = false
   }
 }
 
@@ -297,8 +312,10 @@ onMounted(() => {
           <h3>Confirm Action</h3>
           <p>{{ confirmMessage }}</p>
           <div class="modal-actions">
-            <button class="cancel-btn" @click="showConfirm = false">Cancel</button>
-            <button class="submit-btn delete-confirm-btn" @click="handleConfirm">Confirm</button>
+            <button class="cancel-btn" @click="showConfirm = false" :disabled="isDeleting">Cancel</button>
+            <button class="submit-btn delete-confirm-btn" @click="handleConfirm" :disabled="isDeleting">
+              {{ isDeleting ? 'Deleting...' : 'Confirm' }}
+            </button>
           </div>
         </div>
       </div>
@@ -339,8 +356,10 @@ onMounted(() => {
           </div>
 
           <div class="modal-actions">
-            <button class="cancel-btn" @click="showUploadModal = false">Cancel</button>
-            <button class="submit-btn" @click="submitUpload">Upload</button>
+            <button class="cancel-btn" @click="showUploadModal = false" :disabled="isUploading">Cancel</button>
+            <button class="submit-btn" @click="submitUpload" :disabled="isUploading">
+              {{ isUploading ? 'Uploading...' : 'Upload' }}
+            </button>
           </div>
         </div>
       </div>

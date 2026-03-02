@@ -1,41 +1,29 @@
-from model.Song import Song
+from extension import db
 
-class SongList:
-    def __init__(self, id, title, artist, cover):
-        self.id = id
-        self.title = title
-        self.cover = cover
-        self.songs = []
-    
-    def getId(self):
-        return self.id
-    
-    def getTitle(self):
-        return self.title
-    
-    def getArtist(self):
-        return self.artist
-    
-    def getCover(self):
-        return self.cover
-    
-    def getUrl(self):
-        return self.urls
+# 关联表：歌单 <-> 歌曲 (多对多)
+playlist_songs = db.Table('playlist_songs',
+    db.Column('playlist_id', db.Integer, db.ForeignKey('playlist.id'), primary_key=True),
+    db.Column('song_id', db.Integer, db.ForeignKey('song.id'), primary_key=True)
+)
 
-    def setId(self, id):
-        self.id = id
+class Playlist(db.Model):
+    __tablename__ = 'playlist'
     
-    def setTitle(self, title):
-        self.title = title
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    artist = db.Column(db.String(100), default="Unknown") # 创建者/艺术家
+    cover = db.Column(db.String(200))
     
-    def setArtist(self, artist):
-        self.artist = artist
-    
-    def setCover(self, cover):
-        self.cover = cover
-        
-    def setUrl(self, url):
-        self.url = urls
-        
-    def __str__(self):
-        return f"SongList(id={self.id}, title={self.title}, artist={self.artist}, cover={self.cover}, urls={self.urls})"
+    # 建立与 Song 的关系
+    # lazy='dynamic' 允许我们在 playlist.songs 上进行进一步的查询过滤
+    songs = db.relationship('Song', secondary=playlist_songs, backref=db.backref('playlists', lazy='dynamic'))
+
+    def toDict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "artist": self.artist,
+            "cover": self.cover,
+            # 如果需要返回歌曲数量，可以在这里添加
+            # "song_count": self.songs.count()
+        }

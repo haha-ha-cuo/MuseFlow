@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, ref } from 'vue'
+import { defineProps, ref, computed } from 'vue'
 import { Play, Music } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -10,6 +10,13 @@ const props = defineProps({
 })
 
 const hasError = ref(false)
+
+// 判断封面是否有效 (非空且不是旧的默认占位符)
+const isValidCover = computed(() => {
+  if (!props.cover) return false
+  if (props.cover.includes('placehold.co')) return false
+  return !hasError.value
+})
 
 // 生成一个基于标题的随机渐变色 SVG
 const getPlaceholder = (text) => {
@@ -29,14 +36,14 @@ const getPlaceholder = (text) => {
   <div class="playlist-card">
     <div class="cover-wrapper">
       <img 
-        v-if="!hasError" 
+        v-if="isValidCover" 
         :src="cover" 
         :alt="title" 
         loading="lazy" 
         @error="hasError = true"
       />
       <div v-else class="placeholder-cover">
-        <img :src="getPlaceholder(title)" alt="" class="bg-pattern" />
+        <img :src="getPlaceholder(title || 'Unknown')" alt="" class="bg-pattern" />
         <Music size="48" color="white" class="note-icon" />
       </div>
 

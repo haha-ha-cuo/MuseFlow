@@ -1,9 +1,10 @@
 import os
+import uuid
 from flask import Flask, jsonify, request, url_for
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-import random
 from model.Song import Song
+from model.SongList import Playlist
 from extension import db
 
 # 1. 创建 Flask 应用实例
@@ -25,23 +26,20 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True) # 自动创建目录
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # --- 模拟数据库数据 ---
-# 在真实项目中，这些数据会存储在 MySQL 或 SQLite 数据库中
-MOCK_PLAYLISTS = [
-    {
-        "id": 1,
-        "title": "My Playlist",
-        "artist": "Apple Music",
-        "cover": "https://is1-ssl.mzstatic.com/image/thumb/Features122/v4/71/3b/38/713b381e-1285-d602-0c9f-39589f816c7f/source/600x600bb.jpg"
-    },
-]
+# MOCK_PLAYLISTS 已移除，使用数据库 Playlist 模型
 
 # 2. 启用 CORS (跨域资源共享)
 # 这允许前端(Vue)跨域访问后端API
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- 新增功能：上传音乐 ---
-@app.route('/api/upload', methods=['POST'])
-def upload_file():
+@app.route('/api/upload/playlistId=<int:playlistId>', methods=['POST'])
+def upload_file(playlistId):
+    try:
+        playlist = Playlist.query.get(playlistId)
+    except Exception as e:
+        return jsonify({"code": 500, "msg": "数据库查询错误", "error": str(e)}), 500
+    
     if 'file' not in request.files:
         return jsonify({"code": 400, "msg": "没有上传文件"}), 400
         
@@ -50,13 +48,13 @@ def upload_file():
         return jsonify({"code": 400, "msg": "文件名为空"}), 400
 
     if file:
-        # 安全处理文件名 (比如把 "我的 歌.mp3" 变成 "My_Song.mp3")
-        # 注意：secure_filename 可能会把中文名变空，生产环境建议用 uuid 重命名
-        filename = secure_filename(file.filename)
-        if not filename:
-             # 简单的回退策略：如果是纯中文导致为空，就用时间戳
-             import time
-             filename = f"music_{int(time.time())}.mp3"
+        # 获取文件扩展名
+        ext = os.path.splitext(file.filename)[1]
+        if not ext:
+            ext = '.mp3' # 默认扩展名
+            
+        # 使用 UUID 生成唯一文件名，防止中文名乱码和文件覆盖
+        filename = f"{uuid.uuid4().hex}{ext}"
 
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(save_path)
@@ -73,7 +71,8 @@ def upload_file():
             url=file_url,
             source=filename
         )
-        db.session.add(newSong)
+
+        playlist.songs.append(newSong)
         db.session.commit()
 
         print(f"上传成功: {newSong.toDict()}")
@@ -90,13 +89,47 @@ def getPlaylists():
     """
     获取推荐歌单列表
     """
-    # 可以在这里添加业务逻辑，比如只返回前10个，或者根据用户喜好排序
+    # 从数据库获取所有歌单
+    playlists = Playlist.query.all()
     
+    # 如果数据库为空，创建一个默认歌单
+    if not playlists:
+        default_playlist = Playlist(
+            title="My Playlist",
+            artist="Apple Music",
+            cover="https://is1-ssl.mzstatic.com/image/thumb/Features122/v4/71/3b/38/713b381e-1285-d602-0c9f-39589f816c7f/source/600x600bb.jpg"
+        )
+        db.session.add(default_playlist)
+        db.session.commit()
+        playlists = [default_playlist]
     
     return jsonify({
         "code": 200,
         "msg": "success",
-        "data": MOCK_PLAYLISTS
+        "data": [p.toDict() for p in playlists]
+    })
+
+@app.route('/api/playlists/upload', methods=['POST'])
+def upload_playlist():
+    """
+    上传新歌单
+    """
+    data = request.json
+    if not data or 'title' not in data or 'artist' not in data:
+        return jsonify({"code": 400, "msg": "缺少必要字段"}), 400
+    
+    new_playlist = Playlist(
+        title=data['title'],
+        artist=data['artist'],
+        cover=data.get('cover') # 默认为 None，前端会显示自动生成的占位符
+    )
+    db.session.add(new_playlist)
+    db.session.commit()
+    
+    return jsonify({
+        "code": 200,
+        "msg": "歌单上传成功",
+        "data": new_playlist.toDict()
     })
 
 @app.route('/api/playlists/id=<int:id>', methods=['GET'])
@@ -104,11 +137,13 @@ def getSongs(id):
      """
      获取所有歌曲列表
      """
-     # 查询数据库获取所有歌曲
-     songs = Song.query.all()
+    
+     playlist = Playlist.query.get(id)
+     if not playlist:
+        return jsonify({"code": 404, "msg": "歌单不存在"}), 404
      
      # 将查询结果转换为字典列表
-     songList = [song.toDict() for song in songs]
+     songList = [song.toDict() for song in playlist.songs]
     
      return jsonify({
          "code": 200,
