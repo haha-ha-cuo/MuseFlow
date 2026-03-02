@@ -27,16 +27,11 @@ MuseFlow/
 
 ### 1. 后端环境配置
 
-确保已安装 Python 3.8+。建议使用虚拟环境。
+确保已安装 Python 3.8+ 以及全局 uv。
 
 ```bash
-# 创建虚拟环境 (Windows)
-python -m venv .venv
-# 激活虚拟环境
-.venv\Scripts\activate
-
-# 安装依赖
-pip install flask flask-sqlalchemy flask-cors
+# 使用 uv 同步环境
+uv sync
 ```
 
 ### 2. 前端环境配置
@@ -54,10 +49,12 @@ npm install
 
 ```bash
 # 在项目根目录下运行
+npm install
 npm run dev
 ```
 
 该命令会执行：
+
 1. 启动 Flask 后端服务 (默认端口 5000)
 2. 启动 Vite 前端开发服务器
 
@@ -78,4 +75,4 @@ npm run dev
 
 ## 📄 许可证
 
-MIT
+[MIT License](https://opensource.org/licenses/MIT)
