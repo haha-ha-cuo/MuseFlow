@@ -29,9 +29,12 @@ const triggerConfirm = (message, callback) => {
   showConfirm.value = true
 }
 
-const handleConfirm = () => {
-  if (confirmCallback.value) confirmCallback.value()
-  showConfirm.value = false
+const handleConfirm = async () => {
+  if (confirmCallback.value) {
+    // 等待回调函数执行完毕 (如果它是 async 的)
+    await confirmCallback.value()
+  }
+  showConfirm.value = false // 这里不要直接关，让回调函数内部决定什么时候关，或者在 finally 里关
 }
 
 // 生成默认占位图 (与 PlaylistCard 保持一致)
@@ -133,6 +136,7 @@ const handleFileSelect = (event, type) => {
 }
 
 const isUploading = ref(false)
+const uploadProgress = ref(0)
 
 const submitUpload = async () => {
   if (!uploadForm.value.audioFile) {
@@ -142,26 +146,44 @@ const submitUpload = async () => {
   
   if (isUploading.value) return
   isUploading.value = true
+  uploadProgress.value = 0
 
   const formData = new FormData()
   formData.append('file', uploadForm.value.audioFile)
-  // 如果后端支持接收额外字段，可以在这里 append
   formData.append('name', uploadForm.value.name)
-  // if (uploadForm.value.coverFile) formData.append('cover', uploadForm.value.coverFile)
 
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
-      method: 'POST',
-      body: formData
+    const xhr = new XMLHttpRequest()
+    
+    const promise = new Promise((resolve, reject) => {
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = (event.loaded / event.total) * 100
+          uploadProgress.value = Math.round(percentComplete)
+        }
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(JSON.parse(xhr.responseText))
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error'))
+      })
+
+      xhr.open('POST', `http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`)
+      xhr.send(formData)
     })
-    const result = await response.json()
+
+    const result = await promise
     
     if (result.code === 200) {
-      // 关键修复：直接使用后端返回的数据（包含真实的数据库 ID）
       const newSong = {
         ...result.data, 
-        duration: '3:00', // 暂时写死，后续可从后端获取
-        // 优先使用上传预览的封面（如果后端没处理封面的话），或者后端返回的封面
         cover: uploadForm.value.coverPreview || result.data.cover || playlistInfo.value.cover
       }
       playlistInfo.value.songs.push(newSong)
@@ -172,9 +194,10 @@ const submitUpload = async () => {
     }
   } catch (error) {
     console.error('上传出错:', error)
-    triggerToast('Upload error, please check backend', 'error')
+    triggerToast('Upload error: ' + error.message, 'error')
   } finally {
     isUploading.value = false
+    uploadProgress.value = 0
   }
 }
 
@@ -212,6 +235,11 @@ const isDeleting = ref(false)
 const handleDelete = async (song) => {
   if (isDeleting.value) return
   isDeleting.value = true
+
+  // If the song to be deleted is playing, stop it first to release file lock
+  if (playerStore.currentSong?.id === song.id) {
+    playerStore.stop()
+  }
   
   try {
     const response = await fetch(`http://127.0.0.1:5000/api/songs/${song.id}`, {
@@ -223,13 +251,11 @@ const handleDelete = async (song) => {
       // 从列表中移除
       playlistInfo.value.songs = playlistInfo.value.songs.filter(s => s.id !== song.id)
       
-      // 如果正在播放被删除的歌曲，停止播放 (可选，视需求而定)
-      if (playerStore.currentSong?.id === song.id) {
-          // playerStore.pause() 
-      }
       triggerToast('Song deleted successfully')
+      showConfirm.value = false // 成功后关闭弹窗
     } else {
       triggerToast('Delete failed: ' + result.msg, 'error')
+      // 失败了是否要关闭弹窗？通常保留让用户重试，或者也可以关闭。这里选择保留。
     }
   } catch (error) {
     console.error('删除出错:', error)
@@ -358,8 +384,12 @@ onMounted(() => {
           <div class="modal-actions">
             <button class="cancel-btn" @click="showUploadModal = false" :disabled="isUploading">Cancel</button>
             <button class="submit-btn" @click="submitUpload" :disabled="isUploading">
-              {{ isUploading ? 'Uploading...' : 'Upload' }}
+              {{ isUploading ? `Uploading ${uploadProgress}%` : 'Upload' }}
             </button>
+          </div>
+          
+          <div v-if="isUploading" class="upload-progress-bar">
+            <div class="upload-progress-fill" :style="{ width: uploadProgress + '%' }"></div>
           </div>
         </div>
       </div>
@@ -864,5 +894,20 @@ onMounted(() => {
 
 .delete-confirm-btn:hover {
   background-color: #d63228;
+}
+
+.upload-progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: var(--color-background-secondary);
+  border-radius: 2px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background-color: var(--color-accent);
+  transition: width 0.2s ease;
 }
 </style>

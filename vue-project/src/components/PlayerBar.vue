@@ -2,47 +2,125 @@
 import { usePlayerStore } from '../stores/player'
 import { storeToRefs } from 'pinia'
 import { Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-vue-next'
+import { computed, ref, onUnmounted } from 'vue'
 
 const playerStore = usePlayerStore()
-const { currentSong, isPlaying } = storeToRefs(playerStore)
-const { togglePlay, nextSong, prevSong } = playerStore
+const { currentSong, isPlaying, currentTime, duration } = storeToRefs(playerStore)
+const { togglePlay, nextSong, prevSong, seek } = playerStore
 
+const isDragging = ref(false)
+const dragPercentage = ref(0)
+const progressBarRef = ref(null)
 
+const formatTime = (seconds) => {
+  if (!seconds) return '0:00'
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+const progressPercentage = computed(() => {
+  if (isDragging.value) return dragPercentage.value
+  if (!duration.value) return 0
+  return (currentTime.value / duration.value) * 100
+})
+
+const handleMouseDown = (e) => {
+  isDragging.value = true
+  updateDragPosition(e)
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
+
+const handleMouseMove = (e) => {
+  if (isDragging.value) {
+    updateDragPosition(e)
+  }
+}
+
+const handleMouseUp = (e) => {
+  if (isDragging.value) {
+    updateDragPosition(e)
+    const seekTime = (dragPercentage.value / 100) * duration.value
+    seek(seekTime)
+    isDragging.value = false
+  }
+  document.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('mouseup', handleMouseUp)
+}
+
+const updateDragPosition = (e) => {
+  if (!progressBarRef.value) return
+  const rect = progressBarRef.value.getBoundingClientRect()
+  const clickX = e.clientX - rect.left
+  let percentage = (clickX / rect.width) * 100
+  percentage = Math.max(0, Math.min(100, percentage)) // Clamp between 0 and 100
+  dragPercentage.value = percentage
+}
+
+// 清理事件监听，防止内存泄漏
+onUnmounted(() => {
+  document.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('mouseup', handleMouseUp)
+})
 </script>
 
 <template>
-  <div class="player-bar" v-if="currentSong">
-    <div class="song-info">
-      <img :src="currentSong.cover" alt="Cover" class="cover" />
-      <div class="text">
-        <div class="title">{{ currentSong.title }}</div>
-        <div class="artist">{{ currentSong.artist }}</div>
+  <Transition name="slide-up">
+    <div class="player-bar" v-if="currentSong">
+      <div class="song-info">
+        <img :src="currentSong.cover" alt="Cover" class="cover" />
+        <div class="text">
+          <div class="title">{{ currentSong.title }}</div>
+          <div class="artist">{{ currentSong.artist }}</div>
+        </div>
+      </div>
+
+      <div class="controls-wrapper">
+        <div class="controls">
+          <button @click="prevSong" class="control-btn sm">
+            <SkipBack size="20" fill="currentColor" />
+          </button>
+          <button @click="togglePlay" class="control-btn play-pause">
+            <Pause v-if="isPlaying" fill="currentColor" size="24" />
+            <Play v-else fill="currentColor" size="24" class="play-icon" />
+          </button>
+          <button @click="nextSong" class="control-btn sm">
+            <SkipForward size="20" fill="currentColor" />
+          </button>
+        </div>
+        
+        <div class="progress-container">
+          <span class="time">{{ isDragging ? formatTime((dragPercentage / 100) * duration) : formatTime(currentTime) }}</span>
+          <div class="progress-bar" ref="progressBarRef" @mousedown="handleMouseDown">
+            <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
+          </div>
+          <span class="time">{{ formatTime(duration) }}</span>
+        </div>
+      </div>
+
+      <div class="volume">
+        <Volume2 size="18" />
+        <div class="slider-track">
+          <div class="slider-fill"></div>
+        </div>
       </div>
     </div>
-
-    <div class="controls">
-      <button @click="prevSong" class="control-btn sm">
-        <SkipBack size="20" fill="currentColor" />
-      </button>
-      <button @click="togglePlay" class="control-btn play-pause">
-        <Pause v-if="isPlaying" fill="currentColor" size="24" />
-        <Play v-else fill="currentColor" size="24" class="play-icon" />
-      </button>
-      <button @click="nextSong" class="control-btn sm">
-        <SkipForward size="20" fill="currentColor" />
-      </button>
-    </div>
-
-    <div class="volume">
-      <Volume2 size="18" />
-      <div class="slider-track">
-        <div class="slider-fill"></div>
-      </div>
-    </div>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
 .player-bar {
   position: fixed;
   bottom: 0;
@@ -84,10 +162,77 @@ const { togglePlay, nextSong, prevSong } = playerStore
   color: var(--color-text-secondary);
 }
 
+.controls-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 40%;
+}
+
 .controls {
   display: flex;
   align-items: center;
   gap: 24px;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+}
+
+.time {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  width: 35px;
+  text-align: center;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background-color: rgba(0,0,0,0.1); /* 轨道颜色 */
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  /* 增加点击区域高度，更容易交互，但用 margin 而不是 padding + clip */
+  margin: 6px 0; 
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--color-text-secondary); /* 已走过进度的颜色 */
+  border-radius: 2px;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+/* 进度条上的圆点 */
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%) scale(0);
+  width: 12px;
+  height: 12px;
+  background-color: var(--color-text);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transition: transform 0.1s ease;
+  z-index: 10;
+}
+
+/* 悬浮时进度条变深色，圆点出现 */
+.progress-bar:hover .progress-fill {
+  background-color: var(--color-accent);
+}
+
+.progress-bar:hover .progress-fill::after {
+  transform: translateY(-50%) scale(1);
 }
 
 .control-btn {

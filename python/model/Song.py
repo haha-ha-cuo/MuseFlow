@@ -9,8 +9,16 @@ class Song(db.Model):
     cover = db.Column(db.String(200), nullable=True)
     url = db.Column(db.String(200), nullable=False)
     source = db.Column(db.String(100), nullable=False)
+    duration = db.Column(db.Integer, nullable=True) # 歌曲时长(秒)
 
     def toDict(self):
+        # 将秒数转换为 MM:SS 格式
+        formatted_duration = "0:00"
+        if self.duration:
+            minutes = self.duration // 60
+            seconds = self.duration % 60
+            formatted_duration = f"{minutes}:{seconds:02d}"
+
         return {
             "id": self.id,
             "title": self.title,
@@ -18,4 +26,5 @@ class Song(db.Model):
             "cover": self.cover,
             "url": self.url,
             "source": self.source,
+            "duration": formatted_duration # 返回格式化后的字符串
         }

@@ -2,6 +2,9 @@
 
 MuseFlow 是一个基于 Flask (后端) 和 Vue 3 (前端) 构建的简易音乐播放器项目。支持上传音乐、播放列表管理和音乐播放功能。
 
+## 致谢
+### 感谢Gemini提供的前端。
+
 ## 🚀 技术栈
 
 - **后端**: Flask, SQLAlchemy (SQLite), Flask-CORS

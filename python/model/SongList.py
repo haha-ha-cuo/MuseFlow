@@ -2,8 +2,8 @@ from extension import db
 
 # 关联表：歌单 <-> 歌曲 (多对多)
 playlist_songs = db.Table('playlist_songs',
-    db.Column('playlist_id', db.Integer, db.ForeignKey('playlist.id'), primary_key=True),
-    db.Column('song_id', db.Integer, db.ForeignKey('song.id'), primary_key=True)
+    db.Column('playlist_id', db.Integer, db.ForeignKey('playlist.id',ondelete='CASCADE'), primary_key=True),
+    db.Column('song_id', db.Integer, db.ForeignKey('song.id',ondelete='CASCADE'), primary_key=True)
 )
 
 class Playlist(db.Model):

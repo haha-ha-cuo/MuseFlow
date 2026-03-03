@@ -121,6 +121,17 @@ export const usePlayerStore = defineStore('player', () => {
     audio.currentTime = time
     currentTime.value = time
   }
+  
+  // 停止播放并清空当前歌曲 (用于删除歌曲时)
+  function stop() {
+    audio.pause()
+    audio.src = ''
+    audio.load() // 强制释放资源
+    isPlaying.value = false
+    currentSong.value = null
+    currentTime.value = 0
+    duration.value = 0
+  }
 
   function nextSong() {
     if (playlist.value.length === 0) return
@@ -148,6 +159,8 @@ export const usePlayerStore = defineStore('player', () => {
     nextSong,
     prevSong,
     setVolume,
-    seek
+    seek,
+    stop,
+    audio // 暴露 audio 对象以便需要时直接操作
   }
 })

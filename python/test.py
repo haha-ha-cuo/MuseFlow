@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request, url_for
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from model.Song import Song
+from tinytag import TinyTag
 from model.SongList import Playlist
 from extension import db
 
@@ -36,7 +37,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 @app.route('/api/upload/playlistId=<int:playlistId>', methods=['POST'])
 def upload_file(playlistId):
     try:
-        playlist = Playlist.query.get(playlistId)
+        playlist = db.session.get(Playlist, playlistId)
     except Exception as e:
         return jsonify({"code": 500, "msg": "数据库查询错误", "error": str(e)}), 500
     
@@ -63,13 +64,31 @@ def upload_file(playlistId):
         # request.host_url 是 http://127.0.0.1:5000/
         file_url = f"{request.host_url}static/music/{filename}"
 
+        # 从文件中提取元数据
+        duration = None
+        artist = "Unknown Artist"
+        try:
+            # 显式创建 TinyTag 对象，并在使用后尝试清理
+            # TinyTag.get() 实际上返回一个新的 TinyTag 实例，并在内部打开文件
+            # 我们手动删除引用来提示 GC
+            tag = TinyTag.get(save_path)
+            if tag:
+                duration = int(tag.duration) if tag.duration else None
+                artist = tag.artist if tag.artist else "Unknown Artist"
+                
+                # 显式删除引用，虽然 Python 是自动 GC，但在 Windows 上这可能有助于快速释放句柄
+                del tag
+        except Exception as e:
+            print(f"元数据提取警告: {e}") # 不阻断上传流程，只打印警告
+        
         # 把新歌加到我们的数据库里
         newSong = Song(
             title=request.form.get('name', 'Unknown Title'),
-            artist="Unknown Artist",
+            artist=artist,
             cover="https://placehold.co/300x300?text=Music",
             url=file_url,
-            source=filename
+            source=filename,
+            duration=duration
         )
 
         playlist.songs.append(newSong)
@@ -138,7 +157,7 @@ def getSongs(id):
      获取所有歌曲列表
      """
     
-     playlist = Playlist.query.get(id)
+     playlist = db.session.get(Playlist, id)
      if not playlist:
         return jsonify({"code": 404, "msg": "歌单不存在"}), 404
      
@@ -154,20 +173,29 @@ def getSongs(id):
 @app.route('/api/songs/<int:id>', methods=['DELETE'])
 def delete_song(id):
     try:
-        song = Song.query.get(id)
-        if song:
-            db.session.delete(song)
-            db.session.commit()
-            
-            # 删除文件
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], song.source)
-            if os.path.exists(file_path):
+        song = db.session.get(Song, id)
+        if not song:
+            return jsonify({"code": 404, "msg": "歌曲不存在"}), 404
+
+        # 1. 获取文件路径
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], song.source)
+        
+        # 2. 先删数据库 (Commit)
+        db.session.delete(song)
+        db.session.commit()
+        
+        # 3. 再尝试删文件 (允许失败)
+        if os.path.exists(file_path):
+            try:
                 os.remove(file_path)
-            
-            return jsonify({"code": 200, "msg": "删除成功"})
-        return jsonify({"code": 404, "msg": "歌曲不存在"}), 404
+            except Exception as file_error:
+                print(f"Warning: 文件删除失败 {file_path}: {file_error}")
+    
+        return jsonify({"code": 200, "msg": "删除成功"})
+        
     except Exception as e:
         db.session.rollback()
+        print(f"Delete Error: {e}")
         return jsonify({"code": 500, "msg": str(e)}), 500
 
 
