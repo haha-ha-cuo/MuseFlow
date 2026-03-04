@@ -90,11 +90,13 @@ export const usePlayerStore = defineStore('player', () => {
     currentIndex.value = playlist.value.findIndex(s => s.id === song.id)
     
     try {
+      console.log('Playing URL:', song.url) // 打印正在播放的 URL
       audio.src = song.url
       audio.volume = volume.value
       await audio.play()
       isPlaying.value = true
     } catch (error) {
+      console.log('Playing URL:', song.url) 
       console.error("播放失败:", error)
       isPlaying.value = false
     }

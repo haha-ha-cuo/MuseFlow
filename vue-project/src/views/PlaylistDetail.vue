@@ -100,6 +100,7 @@ const fetchPlaylistDetail = async () => {
 
 
 const handlePlay = (song) => {
+  playerStore.playlist = [...playlistInfo.value.songs] 
   playerStore.playSong(song)
 }
 
@@ -167,21 +168,166 @@ const submitEdit = async () => {
   }
 }
 
+const showCropModal = ref(false)
+const cropImage = ref(null)
+const cropCanvas = ref(null)
+const cropSelection = ref({ x: 0, y: 0, size: 200 })
+const isDraggingCrop = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
+
+const openCropModal = (file) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const img = new Image()
+    img.onload = () => {
+      cropImage.value = img
+      showCropModal.value = true
+      // Initialize crop selection
+      const size = Math.min(img.width, img.height)
+      cropSelection.value = {
+        x: (img.width - size) / 2,
+        y: (img.height - size) / 2,
+        size: size
+      }
+      setTimeout(() => drawCropCanvas(), 100)
+    }
+    img.src = e.target.result
+  }
+  reader.readAsDataURL(file)
+}
+
+const drawCropCanvas = () => {
+  if (!cropCanvas.value || !cropImage.value) return
+  const ctx = cropCanvas.value.getContext('2d')
+  const canvas = cropCanvas.value
+  const img = cropImage.value
+
+  // Set canvas size to match image size (scaled down if necessary for display)
+  const maxWidth = 500
+  const scale = Math.min(1, maxWidth / img.width)
+  canvas.width = img.width * scale
+  canvas.height = img.height * scale
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+  // Draw overlay
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // Draw crop selection (clear the overlay in the selection area)
+  const sel = cropSelection.value
+  ctx.clearRect(sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale)
+  ctx.drawImage(
+    img, 
+    sel.x, sel.y, sel.size, sel.size, 
+    sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale
+  )
+  
+  // Draw selection border
+  ctx.strokeStyle = '#fff'
+  ctx.lineWidth = 2
+  ctx.strokeRect(sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale)
+}
+
+const handleCropMouseDown = (e) => {
+  isDraggingCrop.value = true
+  dragStart.value = { x: e.clientX, y: e.clientY }
+}
+
+const handleCropMouseMove = (e) => {
+  if (!isDraggingCrop.value) return
+  const dx = e.clientX - dragStart.value.x
+  const dy = e.clientY - dragStart.value.y
+  dragStart.value = { x: e.clientX, y: e.clientY }
+
+  const canvas = cropCanvas.value
+  const scale = canvas.width / cropImage.value.width
+  
+  // Update selection position
+  cropSelection.value.x += dx / scale
+  cropSelection.value.y += dy / scale
+
+  // Clamp selection within image bounds
+  const sel = cropSelection.value
+  const img = cropImage.value
+  sel.x = Math.max(0, Math.min(sel.x, img.width - sel.size))
+  sel.y = Math.max(0, Math.min(sel.y, img.height - sel.size))
+
+  drawCropCanvas()
+}
+
+const handleCropMouseUp = () => {
+  isDraggingCrop.value = false
+}
+
+const confirmCrop = () => {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  const sel = cropSelection.value
+  const img = cropImage.value
+
+  canvas.width = 300 // Target size for cover
+  canvas.height = 300
+
+  ctx.drawImage(
+    img,
+    sel.x, sel.y, sel.size, sel.size,
+    0, 0, canvas.width, canvas.height
+  )
+
+  canvas.toBlob((blob) => {
+    const file = new File([blob], "cover.jpg", { type: "image/jpeg" })
+    
+    // 如果是在"上传歌曲"的模态框里
+    if (showUploadModal.value) {
+      uploadForm.value.coverFile = file
+      uploadForm.value.coverPreview = URL.createObjectURL(blob)
+    } 
+    // 如果是直接点击封面更改
+    else {
+      uploadCover(file)
+    }
+    showCropModal.value = false
+  }, 'image/jpeg', 0.9)
+}
+
+// 独立的上传封面逻辑
+const uploadCover = async (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
+      method: 'POST',
+      body: formData
+    })
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      playlistInfo.value.cover = result.data.url
+      hasError.value = false
+      triggerToast('Cover updated successfully')
+    } else {
+      triggerToast('Cover upload failed: ' + result.msg, 'error')
+    }
+  } catch (error) {
+    console.error('上传出错:', error)
+    triggerToast('Upload error', 'error')
+  }
+}
+
 const handleFileSelect = (event, type) => {
   const file = event.target.files[0]
   if (!file) return
 
   if (type === 'audio') {
     uploadForm.value.audioFile = file
-    uploadForm.value.name = file.name.replace(/\.[^/.]+$/, "") // 默认使用文件名作为歌名
+    uploadForm.value.name = file.name.replace(/\.[^/.]+$/, "")
     uploadForm.value.audioPreview = file.name
   } else if (type === 'cover') {
-    uploadForm.value.coverFile = file
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      uploadForm.value.coverPreview = e.target.result
-    }
-    reader.readAsDataURL(file)
+    openCropModal(file)
+    event.target.value = '' // Reset input
   }
 }
 
@@ -238,6 +384,7 @@ const submitUpload = async () => {
       }
       playlistInfo.value.songs.push(newSong)
       showUploadModal.value = false
+      playerStore.playlist = playlistInfo.value.songs
       triggerToast('Upload successful!')
     } else {
       triggerToast('Upload failed: ' + result.msg, 'error')
@@ -300,7 +447,7 @@ const handleDelete = async (song) => {
     if (result.code === 200) {
       // 从列表中移除
       playlistInfo.value.songs = playlistInfo.value.songs.filter(s => s.id !== song.id)
-      
+      playerStore.playlist = playlistInfo.value.songs
       triggerToast('Song deleted successfully')
       showConfirm.value = false // 成功后关闭弹窗
     } else {
@@ -413,7 +560,7 @@ onMounted(() => {
           <Upload color="white" size="32" />
           <span>Change Cover</span>
         </div>
-        <input type="file" @change="handleUploadCover" accept="image/*" class="cover-input" title="Change Cover" />
+        <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" class="cover-input" title="Change Cover" />
       </div>
       
       <div class="info">
@@ -587,6 +734,22 @@ onMounted(() => {
             <button class="submit-btn" @click="submitEditSong" :disabled="isUpdatingSong">
               {{ isUpdatingSong ? 'Saving...' : 'Save Changes' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Crop Modal -->
+    <Transition name="fade">
+      <div v-if="showCropModal" class="modal-overlay" style="z-index: 3000;" @mouseup="handleCropMouseUp" @mousemove="handleCropMouseMove">
+        <div class="modal-content crop-dialog">
+          <h3>Crop Cover Image</h3>
+          <div class="crop-container">
+             <canvas ref="cropCanvas" @mousedown="handleCropMouseDown"></canvas>
+          </div>
+          <div class="modal-actions">
+            <button class="cancel-btn" @click="showCropModal = false">Cancel</button>
+            <button class="submit-btn" @click="confirmCrop">Confirm Crop</button>
           </div>
         </div>
       </div>
@@ -1118,5 +1281,53 @@ onMounted(() => {
   height: 100%;
   background-color: var(--color-accent);
   transition: width 0.2s ease;
+}
+.crop-dialog {
+  width: auto;
+  max-width: 90vw;
+}
+
+.crop-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  cursor: move;
+}
+
+canvas {
+  max-width: 100%;
+  border: 1px solid #ccc;
+}
+.crop-dialog {
+  width: auto;
+  max-width: 90vw;
+}
+
+.crop-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  cursor: move;
+}
+
+canvas {
+  max-width: 100%;
+  border: 1px solid #ccc;
+}
+.crop-dialog {
+  width: auto;
+  max-width: 90vw;
+}
+
+.crop-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  cursor: move;
+}
+
+canvas {
+  max-width: 100%;
+  border: 1px solid #ccc;
 }
 </style>
