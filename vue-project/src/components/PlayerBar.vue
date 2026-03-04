@@ -5,24 +5,36 @@ import { Play, Pause, SkipBack, SkipForward, Volume2 } from 'lucide-vue-next'
 import { computed, ref, onUnmounted } from 'vue'
 
 const playerStore = usePlayerStore()
-const { currentSong, isPlaying, currentTime, duration } = storeToRefs(playerStore)
-const { togglePlay, nextSong, prevSong, seek } = playerStore
+const { currentSong, isPlaying, currentTime, duration, volume } = storeToRefs(playerStore)
+const { togglePlay, nextSong, prevSong, seek, setVolume } = playerStore
 
 const isDragging = ref(false)
+const isDraggingVolume = ref(false)
 const dragPercentage = ref(0)
+const dragVolumePercentage = ref(0) // 新增：音量拖拽时的临时百分比
 const progressBarRef = ref(null)
+const volumeBarRef = ref(null)
 
-const formatTime = (seconds) => {
-  if (!seconds) return '0:00'
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+
+const formatTime = ( seconds ) => {
+  if ( ! seconds ) return '0:00'
+  const mins = Math . floor ( seconds / 60 )
+  const secs = Math . floor ( seconds % 60 )
+  return ` ${ mins } : ${ secs . toString ().
+  padStart ( 2 , '0' ) } `
 }
+// ... formatTime ...
 
 const progressPercentage = computed(() => {
   if (isDragging.value) return dragPercentage.value
   if (!duration.value) return 0
   return (currentTime.value / duration.value) * 100
+})
+
+// 新增：音量条的显示百分比
+const volumePercentage = computed(() => {
+  if (isDraggingVolume.value) return dragVolumePercentage.value
+  return volume.value * 100
 })
 
 const handleMouseDown = (e) => {
@@ -49,6 +61,43 @@ const handleMouseUp = (e) => {
   document.removeEventListener('mouseup', handleMouseUp)
 }
 
+const handleVolumeMouseDown = (e) => {
+  isDraggingVolume.value = true
+  updateVolumePosition(e)
+  document.addEventListener('mousemove', handleVolumeMouseMove)
+  document.addEventListener('mouseup', handleVolumeMouseUp)
+}
+
+const handleVolumeMouseMove = (e) => {
+  if (isDraggingVolume.value) {
+    updateVolumePosition(e)
+  }
+}
+
+const handleVolumeMouseUp = (e) => {
+  if (isDraggingVolume.value) {
+    updateVolumePosition(e)
+    isDraggingVolume.value = false
+  }
+  document.removeEventListener('mousemove', handleVolumeMouseMove)
+  document.removeEventListener('mouseup', handleVolumeMouseUp)
+}
+
+const updateVolumePosition = (e) => {
+  if (!volumeBarRef.value) return
+  const rect = volumeBarRef.value.getBoundingClientRect()
+  const clickX = e.clientX - rect.left
+  let newVolume = clickX / rect.width
+  newVolume = Math.max(0, Math.min(1, newVolume)) // Clamp between 0 and 1
+  
+  // 1. 更新临时显示状态（无延迟）
+  dragVolumePercentage.value = newVolume * 100
+  
+  // 2. 更新实际音量
+  setVolume(newVolume)
+  // console.log('Current Volume:', newVolume.toFixed(2)) 
+}
+
 const updateDragPosition = (e) => {
   if (!progressBarRef.value) return
   const rect = progressBarRef.value.getBoundingClientRect()
@@ -62,6 +111,8 @@ const updateDragPosition = (e) => {
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
+  document.removeEventListener('mousemove', handleVolumeMouseMove)
+  document.removeEventListener('mouseup', handleVolumeMouseUp)
 })
 </script>
 
@@ -92,7 +143,7 @@ onUnmounted(() => {
         
         <div class="progress-container">
           <span class="time">{{ isDragging ? formatTime((dragPercentage / 100) * duration) : formatTime(currentTime) }}</span>
-          <div class="progress-bar" ref="progressBarRef" @mousedown="handleMouseDown">
+          <div class="progress-bar" :class="{ 'dragging': isDragging }" ref="progressBarRef" @mousedown="handleMouseDown">
             <div class="progress-fill" :style="{ width: progressPercentage + '%' }"></div>
           </div>
           <span class="time">{{ formatTime(duration) }}</span>
@@ -101,8 +152,8 @@ onUnmounted(() => {
 
       <div class="volume">
         <Volume2 size="18" />
-        <div class="slider-track">
-          <div class="slider-fill"></div>
+        <div class="progress-bar volume-bar" :class="{ 'dragging': isDraggingVolume }" ref="volumeBarRef" @mousedown="handleVolumeMouseDown">
+          <div class="progress-fill" :style="{ width: volumePercentage + '%' }"></div>
         </div>
       </div>
     </div>
@@ -226,12 +277,14 @@ onUnmounted(() => {
   z-index: 10;
 }
 
-/* 悬浮时进度条变深色，圆点出现 */
-.progress-bar:hover .progress-fill {
+/* 悬浮时或拖拽中：进度条变深色，圆点出现 */
+.progress-bar:hover .progress-fill,
+.progress-bar.dragging .progress-fill {
   background-color: var(--color-accent);
 }
 
-.progress-bar:hover .progress-fill::after {
+.progress-bar:hover .progress-fill::after,
+.progress-bar.dragging .progress-fill::after {
   transform: translateY(-50%) scale(1);
 }
 
@@ -268,21 +321,14 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: var(--color-text-secondary);
 }
 
-.slider-track {
-  width: 100px;
-  height: 4px;
-  background: rgba(0,0,0,0.1);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.slider-fill {
-  width: 60%;
-  height: 100%;
-  background: var(--color-text-secondary);
+/* 提高优先级，确保宽度生效且不被 flex 拉伸 */
+.progress-bar.volume-bar {
+  width: 100px !important;
+  flex: 0 0 auto; 
+  margin: 0; /* 在这里不需要 margin，因为父容器是居中的 */
 }
 </style>

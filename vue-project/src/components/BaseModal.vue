@@ -52,8 +52,8 @@ defineEmits(['close'])
 }
 
 .modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 24px 24px 8px; /* 增加顶部padding，减少底部padding */
+  /* border-bottom: 1px solid var(--color-border); */ /* 移除底部分割线 */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -72,12 +72,12 @@ defineEmits(['close'])
 }
 
 .modal-body {
-  padding: 20px;
+  padding: 16px 24px; /* 调整左右padding与header/footer一致 */
 }
 
 .modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--color-border);
+  padding: 8px 24px 24px; /* 增加底部padding */
+  /* border-top: 1px solid var(--color-border); */ /* 移除顶部分割线 */
   display: flex;
   justify-content: flex-end;
   gap: 12px;

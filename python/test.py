@@ -26,8 +26,6 @@ UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'music')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True) # 自动创建目录
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- 模拟数据库数据 ---
-# MOCK_PLAYLISTS 已移除，使用数据库 Playlist 模型
 
 # 2. 启用 CORS (跨域资源共享)
 # 这允许前端(Vue)跨域访问后端API
@@ -116,7 +114,8 @@ def getPlaylists():
         default_playlist = Playlist(
             title="My Playlist",
             artist="Apple Music",
-            cover="https://is1-ssl.mzstatic.com/image/thumb/Features122/v4/71/3b/38/713b381e-1285-d602-0c9f-39589f816c7f/source/600x600bb.jpg"
+            cover="https://is1-ssl.mzstatic.com/image/thumb/Features122/v4/71/3b/38/713b381e-1285-d602-0c9f-39589f816c7f/source/600x600bb.jpg",
+            description="Songs from your server."
         )
         db.session.add(default_playlist)
         db.session.commit()
@@ -140,7 +139,8 @@ def upload_playlist():
     new_playlist = Playlist(
         title=data['title'],
         artist=data['artist'],
-        cover=data.get('cover') # 默认为 None，前端会显示自动生成的占位符
+        cover=data.get('cover'), # 默认为 None，前端会显示自动生成的占位符
+        description=data.get('description', "Songs from your server.")
     )
     db.session.add(new_playlist)
     db.session.commit()
@@ -167,6 +167,8 @@ def getSongs(id):
      return jsonify({
          "code": 200,
          "msg": "success",
+         "title": playlist.title,
+         "description": playlist.description,
          "data": songList
      })
 
@@ -198,7 +200,53 @@ def delete_song(id):
         print(f"Delete Error: {e}")
         return jsonify({"code": 500, "msg": str(e)}), 500
 
+@app.route('/api/songs/update/<int:id>',methods = ['PUT'])
+def update_song(id):
+    """
+    更新歌曲信息
+    """
+    data = request.json
+    if not data or 'title' not in data or 'artist' not in data:
+        return jsonify({"code": 400, "msg": "缺少必要字段"}), 400
+    
+    song = db.session.get(Song, id)
+    if not song:
+        return jsonify({"code": 404, "msg": "歌曲不存在"}), 404
+    
+    song.title = data['title']
+    song.artist = data['artist']
+    song.cover = data.get('cover') # 默认为 None，前端会显示自动生成的占位符
+    db.session.commit()
+    
+    return jsonify({
+        "code": 200,
+        "msg": "歌曲更新成功",
+        "data": song.toDict()
+    })
 
+@app.route('/api/playlists/update/<int:id>',methods = ['PUT'])
+def update_playlist(id):
+    """
+    更新歌单信息
+    """
+    data = request.json
+    if not data or 'title' not in data or 'description' not in data:
+        return jsonify({"code": 400, "msg": "缺少必要字段"}), 400
+    
+    playlist = db.session.get(Playlist, id)
+    if not playlist:
+        return jsonify({"code": 404, "msg": "歌单不存在"}), 404
+    
+    playlist.title = data['title']
+    playlist.description = data['description']
+    playlist.cover = data.get('cover') # 默认为 None，前端会显示自动生成的占位符
+    db.session.commit()
+    
+    return jsonify({
+        "code": 200,
+        "msg": "歌单更新成功",
+        "data": playlist.toDict()
+    })
 # 4. 启动应用
 if __name__ == '__main__':
     # debug=True 表示开启调试模式，代码修改后会自动重启

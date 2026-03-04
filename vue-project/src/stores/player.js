@@ -161,6 +161,7 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     seek,
     stop,
+    volume,
     audio // 暴露 audio 对象以便需要时直接操作
   }
 })

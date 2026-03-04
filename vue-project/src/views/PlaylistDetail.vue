@@ -1,7 +1,7 @@
 <script setup>
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { usePlayerStore } from '../stores/player'
-import { Play, Upload, Plus, Music, Trash2, X, AlertCircle, CheckCircle } from 'lucide-vue-next'
+import { Play, Upload, Plus, Music, Trash2, X, AlertCircle, CheckCircle, ArrowLeft, Edit } from 'lucide-vue-next'
 import { ref, onMounted } from 'vue'
 
 // Toast Notification System
@@ -51,6 +51,7 @@ const getPlaceholder = (text) => {
 }
 
 const route = useRoute()
+const router = useRouter()
 const playerStore = usePlayerStore()
 const hasError = ref(false)
 const isLoading = ref(true)
@@ -81,14 +82,11 @@ const fetchPlaylistDetail = async () => {
     const result = await response.json()
 
     if (result.code === 200) {
-      // 2. 成功获取数据，更新 playlistInfo
-      // 注意：后端只返回了 songList，我们可能需要保留一些歌单的基础信息（标题、封面）
-      // 如果后端能把歌单详情也一起返回最好，目前我们可以混合一下
-      playlistInfo.value.songs = result.data
-      
-      // 这里的标题和封面暂时写死或从其他接口获取，或者后端一并返回
-      playlistInfo.value.title = "Local Music" 
-      playlistInfo.value.description = "Songs from your server"
+      playlistInfo.value = {
+        title: result.title,
+        description: result.description,
+        songs: result.data || [],
+      }
     } else {
       console.error('获取失败:', result.msg)
     }
@@ -114,6 +112,58 @@ const openUploadModal = () => {
     coverFile: null,
     audioPreview: '',
     coverPreview: ''
+  }
+}
+
+const showEditModal = ref(false)
+const editForm = ref({
+  title: '',
+  description: ''
+})
+
+const openEditModal = () => {
+  editForm.value.title = playlistInfo.value.title
+  editForm.value.description = playlistInfo.value.description
+  showEditModal.value = true
+}
+
+const isUpdating = ref(false)
+
+const submitEdit = async () => {
+  if (!editForm.value.title) {
+    triggerToast('Title cannot be empty', 'error')
+    return
+  }
+  
+  if (isUpdating.value) return
+  isUpdating.value = true
+
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/playlists/update/${route.params.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: editForm.value.title,
+        description: editForm.value.description
+      })
+    })
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      playlistInfo.value.title = editForm.value.title
+      playlistInfo.value.description = editForm.value.description
+      showEditModal.value = false
+      triggerToast('Playlist updated successfully')
+    } else {
+      triggerToast('Update failed: ' + result.msg, 'error')
+    }
+  } catch (error) {
+    console.error('Update error:', error)
+    triggerToast('Update error, please check backend', 'error')
+  } finally {
+    isUpdating.value = false
   }
 }
 
@@ -265,6 +315,64 @@ const handleDelete = async (song) => {
   }
 }
 
+const showEditSongModal = ref(false)
+const editSongForm = ref({
+  id: null,
+  title: '',
+  artist: ''
+})
+
+const openEditSongModal = (song) => {
+  editSongForm.value.id = song.id
+  editSongForm.value.title = song.title
+  editSongForm.value.artist = song.artist
+  showEditSongModal.value = true
+}
+
+const isUpdatingSong = ref(false)
+
+const submitEditSong = async () => {
+  if (!editSongForm.value.title) {
+    triggerToast('Song title cannot be empty', 'error')
+    return
+  }
+  
+  if (isUpdatingSong.value) return
+  isUpdatingSong.value = true
+
+  try {
+    const response = await fetch(`http://127.0.0.1:5000/api/songs/update/${editSongForm.value.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        title: editSongForm.value.title,
+        artist: editSongForm.value.artist
+      })
+    })
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      // Update local state
+      const song = playlistInfo.value.songs.find(s => s.id === editSongForm.value.id)
+      if (song) {
+        song.title = editSongForm.value.title
+        song.artist = editSongForm.value.artist
+      }
+      showEditSongModal.value = false
+      triggerToast('Song updated successfully')
+    } else {
+      triggerToast('Update failed: ' + result.msg, 'error')
+    }
+  } catch (error) {
+    console.error('更新出错:', error)
+    triggerToast('Update error, please check backend', 'error')
+  } finally {
+    isUpdatingSong.value = false
+  }
+}
+
 const confirmDelete = (song) => {
   triggerConfirm(`Are you sure you want to delete "${song.title}"?`, () => handleDelete(song))
 }
@@ -284,6 +392,9 @@ onMounted(() => {
       
       <div v-else class="content-wrapper">
         <div class="header">
+          <button class="back-btn" @click="router.push('/')">
+            <ArrowLeft size="24" />
+          </button>
           <div class="cover-container">
             <!-- 判断逻辑: 有封面且加载未出错时显示图片，否则显示默认占位符 -->
         <img 
@@ -311,6 +422,10 @@ onMounted(() => {
         <div class="actions">
           <button class="play-btn-lg" @click="handlePlay(playlistInfo.songs[0])" v-if="playlistInfo.songs.length > 0">
             <Play fill="currentColor" size="20" style="margin-right: 4px;" /> Play
+          </button>
+
+          <button class="secondary-btn" @click="openEditModal">
+            <Edit size="18" /> Edit Info
           </button>
           
           <div class="upload-song-wrapper">
@@ -341,6 +456,32 @@ onMounted(() => {
             <button class="cancel-btn" @click="showConfirm = false" :disabled="isDeleting">Cancel</button>
             <button class="submit-btn delete-confirm-btn" @click="handleConfirm" :disabled="isDeleting">
               {{ isDeleting ? 'Deleting...' : 'Confirm' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Edit Playlist Info Modal -->
+    <Transition name="fade">
+      <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+        <div class="modal-content">
+          <h3>Edit Playlist Info</h3>
+          
+          <div class="form-group">
+            <label>Playlist Title</label>
+            <input type="text" v-model="editForm.title" placeholder="Enter playlist title" />
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" v-model="editForm.description" placeholder="Enter description" />
+          </div>
+
+          <div class="modal-actions">
+            <button class="cancel-btn" @click="showEditModal = false" :disabled="isUpdating">Cancel</button>
+            <button class="submit-btn" @click="submitEdit" :disabled="isUpdating">
+              {{ isUpdating ? 'Saving...' : 'Save Changes' }}
             </button>
           </div>
         </div>
@@ -409,9 +550,14 @@ onMounted(() => {
           <div class="song-artist">{{ song.artist }}</div>
         </div>
         <span class="duration">{{ song.duration }}</span>
-        <button class="delete-btn" @click.stop="confirmDelete(song)" title="Delete Song">
-          <Trash2 size="16" />
-        </button>
+        <div class="song-actions">
+          <button class="action-btn" @click.stop="openEditSongModal(song)" title="Edit Song">
+            <Edit size="16" />
+          </button>
+          <button class="action-btn delete-btn" @click.stop="confirmDelete(song)" title="Delete Song">
+            <Trash2 size="16" />
+          </button>
+        </div>
       </div>
       
       <div v-if="playlistInfo.songs.length === 0" class="empty-state">
@@ -420,6 +566,32 @@ onMounted(() => {
         </div>
       </div>
     </Transition>
+    <!-- Edit Song Info Modal -->
+    <Transition name="fade">
+      <div v-if="showEditSongModal" class="modal-overlay" @click.self="showEditSongModal = false">
+        <div class="modal-content">
+          <h3>Edit Song Info</h3>
+          
+          <div class="form-group">
+            <label>Song Title</label>
+            <input type="text" v-model="editSongForm.title" placeholder="Enter song title" />
+          </div>
+
+          <div class="form-group">
+            <label>Artist</label>
+            <input type="text" v-model="editSongForm.artist" placeholder="Enter artist name" />
+          </div>
+
+          <div class="modal-actions">
+            <button class="cancel-btn" @click="showEditSongModal = false" :disabled="isUpdatingSong">Cancel</button>
+            <button class="submit-btn" @click="submitEditSong" :disabled="isUpdatingSong">
+              {{ isUpdatingSong ? 'Saving...' : 'Save Changes' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -470,13 +642,40 @@ onMounted(() => {
 
 .header {
   display: flex;
-  padding: 40px;
+  padding: 20px 40px;
   gap: 32px;
   align-items: flex-end;
-  background: linear-gradient(to bottom, #f5f5f7, #ffffff);
+  /* background: linear-gradient(to bottom, #f5f5f7, #ffffff); */ /* 移除背景色，保持干净 */
+  position: relative;
+  margin-top: 20px;
+}
+
+.back-btn {
+  position: absolute;
+  top: 20px;
+  left: 40px; /* 对齐 padding */
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  background: var(--color-background-secondary); /* 默认有淡背景 */
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.back-btn:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+  transform: scale(1.05);
 }
 
 .cover-container {
+  margin-top: 40px; /* 给返回按钮留出空间 */
   position: relative;
   width: 260px;
   height: 260px;
@@ -811,28 +1010,38 @@ onMounted(() => {
   color: var(--color-text-secondary);
 }
 
-.delete-btn {
+.song-actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-left: 12px;
+}
+
+.song-item:hover .song-actions {
+  opacity: 1;
+}
+
+.action-btn {
   background: transparent;
   border: none;
   color: var(--color-text-secondary);
   padding: 8px;
   border-radius: 50%;
   cursor: pointer;
-  opacity: 0;
-  transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 12px;
+  transition: all 0.2s;
 }
 
-.song-item:hover .delete-btn {
-  opacity: 1;
+.action-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--color-text);
 }
 
 .delete-btn:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-  color: #ff3b30; /* Red color for delete action */
+  color: #ff3b30;
 }
 
 /* Toast Styles */

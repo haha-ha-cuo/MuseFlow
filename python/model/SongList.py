@@ -13,6 +13,7 @@ class Playlist(db.Model):
     title = db.Column(db.String(100), nullable=False)
     artist = db.Column(db.String(100), default="Unknown") # 创建者/艺术家
     cover = db.Column(db.String(200))
+    description = db.Column(db.String(200), default="Songs from your server.")
     
     # 建立与 Song 的关系
     # lazy='dynamic' 允许我们在 playlist.songs 上进行进一步的查询过滤
@@ -24,6 +25,7 @@ class Playlist(db.Model):
             "title": self.title,
             "artist": self.artist,
             "cover": self.cover,
+            "description": self.description,
             # 如果需要返回歌曲数量，可以在这里添加
             # "song_count": self.songs.count()
         }

@@ -8,7 +8,7 @@ import PlayerBar from './components/PlayerBar.vue'
     <div class="sidebar">
       <div class="logo">
         <img src="/logo.svg" alt="Music Logo" class="brand-icon" />
-        Music
+        MuseFlow
       </div>
       <nav>
         <router-link to="/" class="nav-item active">Listen Now</router-link>
