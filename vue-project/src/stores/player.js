@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { API_BASE_URL } from '@/config'
 
 export const usePlayerStore = defineStore('player', () => {
   // 内部 Audio 对象
@@ -33,37 +34,7 @@ export const usePlayerStore = defineStore('player', () => {
     isPlaying.value = false
   })
 
-  // 模拟一些歌曲数据 (实际开发中应从后端获取)
-  const demoSongs = [
-    {
-      id: 1,
-      title: 'Anti-Hero',
-      artist: 'Taylor Swift',
-      album: 'Midnights',
-      cover: 'https://upload.wikimedia.org/wikipedia/en/9/9f/Midnights_-_Taylor_Swift.png',
-      duration: '3:20',
-      url: '#' // 实际音频链接
-    },
-    {
-      id: 2,
-      title: 'Flowers',
-      artist: 'Miley Cyrus',
-      album: 'Endless Summer Vacation',
-      cover: 'https://upload.wikimedia.org/wikipedia/en/6/63/Miley_Cyrus_-_Flowers.png',
-      duration: '3:20',
-      url: '#'
-    },
-    {
-      id: 3,
-      title: 'As It Was',
-      artist: 'Harry Styles',
-      album: 'Harry\'s House',
-      cover: 'https://upload.wikimedia.org/wikipedia/en/d/d5/Harry_Styles_-_As_It_Was.png',
-      duration: '2:47',
-      url: '#'
-    }
-  ]
-
+ 
   // 动作
   async function playSong(song) {
     if (currentSong.value?.id === song.id) {
@@ -77,7 +48,15 @@ export const usePlayerStore = defineStore('player', () => {
        // 这里假设如果是刚刚上传的预览 blob URL，可以直接用
        // 如果是后端返回的相对路径 '/uploads/xxx.mp3'，需要拼接
        if (!song.url.startsWith('blob:')) {
-          song.url = `http://127.0.0.1:5000${song.url}`
+          // 注意：API_BASE_URL 可能包含 /api，如果后端返回的 song.url 已经是 /static/... 开头，
+          // 我们可能需要去掉 /api 或者直接用 window.location.origin (如果是同源)
+          // 简单起见，这里假设 API_BASE_URL 如果是 /api，则后端返回的相对路径也是相对于域名的
+          
+          // 如果 API_BASE_URL 是完整的 URL (http://...)
+         if (song.url && song.url.startsWith('/')) {
+           // 这里的 origin 应该从配置里取，而不是写死
+            song.url = `${new URL(API_BASE_URL).origin}${song.url}`
+          }
        }
     }
 
@@ -153,7 +132,6 @@ export const usePlayerStore = defineStore('player', () => {
     isPlaying,
     currentSong,
     playlist,
-    demoSongs,
     currentTime,
     duration,
     playSong,

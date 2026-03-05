@@ -1,6 +1,29 @@
 <script setup>
 import { RouterView } from 'vue-router'
 import PlayerBar from './components/PlayerBar.vue'
+import { ref, onMounted } from 'vue'
+import { Sun, Moon } from 'lucide-vue-next'
+
+const isDarkMode = ref(false)
+
+const toggleTheme = () => {
+  isDarkMode.value = !isDarkMode.value
+  const theme = isDarkMode.value ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('theme', theme)
+}
+
+onMounted(() => {
+  // Check local storage or system preference
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme) {
+    isDarkMode.value = savedTheme === 'dark'
+    document.documentElement.setAttribute('data-theme', savedTheme)
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    isDarkMode.value = true
+    document.documentElement.setAttribute('data-theme', 'dark')
+  }
+})
 </script>
 
 <template>
@@ -23,6 +46,14 @@ import PlayerBar from './components/PlayerBar.vue'
         <a href="#" class="nav-item">Albums</a>
         <a href="#" class="nav-item">Songs</a>
       </nav>
+
+      <div class="theme-toggle-container">
+        <button class="theme-toggle-btn" @click="toggleTheme" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+          <Sun v-if="isDarkMode" size="20" />
+          <Moon v-else size="20" />
+          <span>{{ isDarkMode ? 'Light Mode' : 'Dark Mode' }}</span>
+        </button>
+      </div>
     </div>
 
     <main class="main-content">
@@ -95,6 +126,28 @@ import PlayerBar from './components/PlayerBar.vue'
   background: rgba(0,0,0,0.05);
   color: var(--color-accent);
   font-weight: 500;
+}
+
+.theme-toggle-container {
+  margin-top: auto; /* Push to bottom */
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.theme-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  width: 100%;
+  border-radius: 8px;
+  color: var(--color-text);
+  font-size: 15px;
+  transition: background 0.2s;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(0,0,0,0.05);
 }
 
 .main-content {

@@ -4,6 +4,7 @@ import { ref, onMounted } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import PlaylistCard from '../components/PlaylistCard.vue'
 import BaseModal from '../components/BaseModal.vue'
+import { API_BASE_URL } from '@/config'
 
 const router = useRouter()
 
@@ -16,7 +17,7 @@ const isCreating = ref(false)
 // 2. 定义获取数据的函数
 const fetchPlaylists = async () => {
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/playlists')
+    const response = await fetch(`${API_BASE_URL}/playlists`)
     const result = await response.json()
     if (result.code === 200) {
       playlists.value = result.data
@@ -24,7 +25,7 @@ const fetchPlaylists = async () => {
       console.warn("后端返回错误:", result)
     }
   } catch (error) {
-    console.error("连接后端失败。请检查：\n1. python main.py 是否正在运行？\n2. 端口是否为 5000？", error)
+    console.error("连接后端失败", error)
   }
 }
 
@@ -40,7 +41,7 @@ const confirmCreatePlaylist = async () => {
   
   isCreating.value = true
   try {
-    const response = await fetch('http://127.0.0.1:5000/api/playlists/upload', {
+    const response = await fetch(`${API_BASE_URL}/playlists/upload`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

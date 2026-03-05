@@ -3,6 +3,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePlayerStore } from '../stores/player'
 import { Play, Upload, Plus, Music, Trash2, X, AlertCircle, CheckCircle, ArrowLeft, Edit } from 'lucide-vue-next'
 import { ref, onMounted } from 'vue'
+import { API_BASE_URL } from '@/config'
 
 // Toast Notification System
 const showToast = ref(false)
@@ -77,8 +78,7 @@ const fetchPlaylistDetail = async () => {
   isLoading.value = true
   try {
     // 1. 发起请求 (注意 URL 要和后端匹配)
-    // 假设后端运行在 5000 端口
-    const response = await fetch(`http://127.0.0.1:5000/api/playlists/id=${route.params.id}`)
+    const response = await fetch(`${API_BASE_URL}/playlists/id=${route.params.id}`)
     const result = await response.json()
 
     if (result.code === 200) {
@@ -86,7 +86,9 @@ const fetchPlaylistDetail = async () => {
         title: result.title,
         description: result.description,
         songs: result.data || [],
+        cover: result.cover 
       }
+      console.log(playlistInfo.value.cover)
     } else {
       console.error('获取失败:', result.msg)
     }
@@ -140,7 +142,7 @@ const submitEdit = async () => {
   isUpdating.value = true
 
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/playlists/update/${route.params.id}`, {
+    const response = await fetch(`${API_BASE_URL}/playlists/update/${route.params.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -298,14 +300,14 @@ const uploadCover = async (file) => {
   formData.append('file', file)
 
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
+    const response = await fetch(`${API_BASE_URL}/playlists/upload/cover/${route.params.id}`, {
       method: 'POST',
       body: formData
     })
     const result = await response.json()
     
     if (result.code === 200) {
-      playlistInfo.value.cover = result.data.url
+      playlistInfo.value.cover = result.data.coverUrl
       hasError.value = false
       triggerToast('Cover updated successfully')
     } else {
@@ -323,7 +325,9 @@ const handleFileSelect = (event, type) => {
 
   if (type === 'audio') {
     uploadForm.value.audioFile = file
-    uploadForm.value.name = file.name.replace(/\.[^/.]+$/, "")
+    if(uploadForm.value.name === ''){
+        uploadForm.value.name = file.name.replace(/\.[^/.]+$/, "")
+    }
     uploadForm.value.audioPreview = file.name
   } else if (type === 'cover') {
     openCropModal(file)
@@ -347,6 +351,9 @@ const submitUpload = async () => {
   const formData = new FormData()
   formData.append('file', uploadForm.value.audioFile)
   formData.append('name', uploadForm.value.name)
+  if (uploadForm.value.coverFile) {
+    formData.append('cover', uploadForm.value.coverFile)
+  }
 
   try {
     const xhr = new XMLHttpRequest()
@@ -371,7 +378,7 @@ const submitUpload = async () => {
         reject(new Error('Network error'))
       })
 
-      xhr.open('POST', `http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`)
+      xhr.open('POST', `${API_BASE_URL}/upload/playlistId=${route.params.id}`)
       xhr.send(formData)
     })
 
@@ -406,7 +413,7 @@ const handleUploadCover = async (event) => {
   formData.append('file', file)
 
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/upload/playlistId=${route.params.id}`, {
+    const response = await fetch(`${API_BASE_URL}/upload/playlistId=${route.params.id}`, {
       method: 'POST',
       body: formData
     })
@@ -439,7 +446,7 @@ const handleDelete = async (song) => {
   }
   
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/songs/${song.id}`, {
+    const response = await fetch(`${API_BASE_URL}/songs/${song.id}`, {
       method: 'DELETE'
     })
     const result = await response.json()
@@ -488,7 +495,7 @@ const submitEditSong = async () => {
   isUpdatingSong.value = true
 
   try {
-    const response = await fetch(`http://127.0.0.1:5000/api/songs/update/${editSongForm.value.id}`, {
+    const response = await fetch(`${API_BASE_URL}/songs/update/${editSongForm.value.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -939,7 +946,7 @@ onMounted(() => {
 }
 
 .secondary-btn {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--color-background-secondary);
   color: var(--color-accent);
   padding: 12px 24px;
   border-radius: 8px;
@@ -948,11 +955,11 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: background 0.1s;
+  transition: background-color 0.1s;
 }
 
 .secondary-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-border);
 }
 
 .actions {
@@ -1014,11 +1021,13 @@ onMounted(() => {
 }
 
 .modal-content {
-  background: white;
+  background: var(--color-background);
   padding: 32px;
   border-radius: 16px;
   width: 400px;
   box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .modal-content h3 {
@@ -1042,11 +1051,13 @@ onMounted(() => {
 .form-group input[type="text"] {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
+  background: var(--color-background);
+  color: var(--color-text);
 }
 
 .form-group input[type="text"]:focus {
@@ -1061,11 +1072,11 @@ onMounted(() => {
 .file-select-btn {
   width: 100%;
   padding: 10px 12px;
-  background: #f5f5f7;
-  border: 1px solid #e0e0e0;
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   text-align: left;
-  color: #333;
+  color: var(--color-text);
   cursor: pointer;
 }
 
@@ -1130,7 +1141,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-background-secondary);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background-color 0.2s;
 }
 
 .song-item:hover {
@@ -1213,17 +1224,18 @@ onMounted(() => {
   top: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: white;
+  background: var(--color-background);
   padding: 12px 24px;
   border-radius: 50px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
   gap: 8px;
   font-weight: 500;
   font-size: 14px;
   z-index: 3000;
-  color: #333;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
 }
 
 .toast-notification.error {
@@ -1296,38 +1308,6 @@ onMounted(() => {
 
 canvas {
   max-width: 100%;
-  border: 1px solid #ccc;
-}
-.crop-dialog {
-  width: auto;
-  max-width: 90vw;
-}
-
-.crop-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-  cursor: move;
-}
-
-canvas {
-  max-width: 100%;
-  border: 1px solid #ccc;
-}
-.crop-dialog {
-  width: auto;
-  max-width: 90vw;
-}
-
-.crop-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-  cursor: move;
-}
-
-canvas {
-  max-width: 100%;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-border);
 }
 </style>

@@ -15,4 +15,19 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+      // 如果静态资源也需要代理 (例如 /static/music/...)
+      '/static': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 })

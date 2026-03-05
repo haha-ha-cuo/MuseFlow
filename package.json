@@ -1,7 +1,7 @@
 {
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \".\\.venv\\Scripts\\python.exe python/test.py\" \"cd vue-project && npm run dev\""
+    "dev": "concurrently \".\\.venv\\Scripts\\python.exe python/app.py\" \"cd vue-project && npm run dev\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -7,6 +7,7 @@ from model.Song import Song
 from tinytag import TinyTag
 from model.SongList import Playlist
 from extension import db
+from flask_migrate import Migrate
 
 # 1. 创建 Flask 应用实例
 # static_folder='static' 告诉 Flask 静态文件存在哪里
@@ -14,17 +15,21 @@ app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 
 #注册数据库
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///music.db'
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'music.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
+migrate = Migrate(app, db)
 
-with app.app_context():
-    db.create_all()
+
 
 # 配置上传保存路径
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'music')
+COVER_FOLDER = os.path.join(app.root_path, 'static', 'cover')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True) # 自动创建目录
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(COVER_FOLDER, exist_ok=True) # 自动创建目录
+app.config['COVER_FOLDER'] = COVER_FOLDER
 
 
 # 2. 启用 CORS (跨域资源共享)
@@ -41,7 +46,11 @@ def upload_file(playlistId):
     
     if 'file' not in request.files:
         return jsonify({"code": 400, "msg": "没有上传文件"}), 400
-        
+
+    if 'cover' in request.files:
+        cover = request.files['cover']
+    else:
+        cover = None
     file = request.files['file']
     if file.filename == '':
         return jsonify({"code": 400, "msg": "文件名为空"}), 400
@@ -54,13 +63,14 @@ def upload_file(playlistId):
             
         # 使用 UUID 生成唯一文件名，防止中文名乱码和文件覆盖
         filename = f"{uuid.uuid4().hex}{ext}"
-
+        
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(save_path)
 
         # 生成可访问的 URL
         # request.host_url 是 http://127.0.0.1:5000/
         file_url = f"{request.host_url}static/music/{filename}"
+        
 
         # 从文件中提取元数据
         duration = None
@@ -78,15 +88,20 @@ def upload_file(playlistId):
                 del tag
         except Exception as e:
             print(f"元数据提取警告: {e}") # 不阻断上传流程，只打印警告
+        if cover:
+            coverName = f"{uuid.uuid4().hex}{os.path.splitext(cover.filename)[1]}"
+            cover_url = f"{request.host_url}static/cover/{coverName}"
+            cover.save(os.path.join(app.config['COVER_FOLDER'], coverName))
         
         # 把新歌加到我们的数据库里
         newSong = Song(
             title=request.form.get('name', 'Unknown Title'),
             artist=artist,
-            cover="https://placehold.co/300x300?text=Music",
+            cover=cover_url if cover else None,
             url=file_url,
             source=filename,
-            duration=duration
+            duration=duration,
+            coverSource=cover.filename if cover else None
         )
 
         playlist.songs.append(newSong)
@@ -127,6 +142,45 @@ def getPlaylists():
         "data": [p.toDict() for p in playlists]
     })
 
+@app.route('/api/playlists/upload/cover/<int:id>', methods=['POST'])
+def upload_cover(id):
+    if 'file' not in request.files:
+        return jsonify({"code": 400, "msg": "缺少必要文件"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"code": 400, "msg": "文件名为空"}), 400
+        
+    # 获取文件扩展名
+    ext = os.path.splitext(file.filename)[1]
+    if not ext:
+        ext = '.jpg' # 默认扩展名
+        
+    # 使用 UUID 生成唯一文件名
+    filename = f"{uuid.uuid4().hex}{ext}"
+    
+    save_path = os.path.join(app.config['COVER_FOLDER'], filename)
+    file.save(save_path)
+
+    # 生成可访问的 URL
+    cover_url = f"{request.host_url}static/cover/{filename}"
+    
+    playlist = db.session.get(Playlist, id)
+    if not playlist:
+        return jsonify({"code": 404, "msg": "歌单不存在"}), 404
+        
+    # 修正字段名：使用 cover 而不是 coverUrl
+    playlist.cover = cover_url 
+    db.session.commit()
+    
+    # 必须返回响应！
+    return jsonify({
+        "code": 200, 
+        "msg": "Success", 
+        "data": {"coverUrl": cover_url} # 前端可能期望这个字段名
+    })
+    
+
 @app.route('/api/playlists/upload', methods=['POST'])
 def upload_playlist():
     """
@@ -135,12 +189,13 @@ def upload_playlist():
     data = request.json
     if not data or 'title' not in data or 'artist' not in data:
         return jsonify({"code": 400, "msg": "缺少必要字段"}), 400
-    
+
     new_playlist = Playlist(
         title=data['title'],
         artist=data['artist'],
         cover=data.get('cover'), # 默认为 None，前端会显示自动生成的占位符
-        description=data.get('description', "Songs from your server.")
+        description=data.get('description', "Songs from your server."),
+        coverUrl=None
     )
     db.session.add(new_playlist)
     db.session.commit()
@@ -169,6 +224,7 @@ def getSongs(id):
          "msg": "success",
          "title": playlist.title,
          "description": playlist.description,
+         "cover": playlist.cover,
          "data": songList
      })
 
@@ -180,18 +236,25 @@ def delete_song(id):
             return jsonify({"code": 404, "msg": "歌曲不存在"}), 404
 
         # 1. 获取文件路径
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], song.source)
+        filePath = os.path.join(app.config['UPLOAD_FOLDER'], song.source)
+        coverPath = os.path.join(app.config['COVER_FOLDER'], song.coverSource)
         
         # 2. 先删数据库 (Commit)
         db.session.delete(song)
         db.session.commit()
         
         # 3. 再尝试删文件 (允许失败)
-        if os.path.exists(file_path):
+        if os.path.exists(filePath):
             try:
-                os.remove(file_path)
+                os.remove(filePath)
             except Exception as file_error:
-                print(f"Warning: 文件删除失败 {file_path}: {file_error}")
+                print(f"Warning: 文件删除失败 {filePath}: {file_error}")
+
+        if os.path.exists(coverPath):
+            try:
+                os.remove(coverPath)
+            except Exception as file_error:
+                print(f"Warning: 文件删除失败 {coverPath}: {file_error}")
     
         return jsonify({"code": 200, "msg": "删除成功"})
         
@@ -206,16 +269,26 @@ def update_song(id):
     更新歌曲信息
     """
     data = request.json
-    if not data or 'title' not in data or 'artist' not in data:
+    if not data or 'title' not in data or 'artist' not in data or 'cover' not in data or 'coverSource' not in data:
         return jsonify({"code": 400, "msg": "缺少必要字段"}), 400
     
     song = db.session.get(Song, id)
     if not song:
         return jsonify({"code": 404, "msg": "歌曲不存在"}), 404
+
+    # if song.coverSource != data.get('coverSource'):
+    #     # 封面源信息改变，需要删除旧封面文件
+    #     old_coverPath = os.path.join(app.config['COVER_FOLDER'], song.coverSource)
+    #     if os.path.exists(old_cover_path):
+    #         try:
+    #             os.remove(old_cover_path)
+    #         except Exception as file_error:
+    #             print(f"Warning: 文件删除失败 {old_cover_path}: {file_error}")
     
     song.title = data['title']
     song.artist = data['artist']
     song.cover = data.get('cover') # 默认为 None，前端会显示自动生成的占位符
+    #song.coverSource = data.get('coverSource') # 封面源信息
     db.session.commit()
     
     return jsonify({

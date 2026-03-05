@@ -58,3 +58,18 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+
+.env
+.jpg
+.png
+# Uploaded Media
+python/static/music/*
+!python/static/music/.gitkeep
+python/static/cover/*    <-- 新增：忽略封面图片
+!python/static/cover/.gitkeep
+
+# Migrations (保留迁移脚本，但忽略编译缓存)
+migrations/__pycache__/
+
+# ...
