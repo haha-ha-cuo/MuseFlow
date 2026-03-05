@@ -171,6 +171,7 @@ def upload_cover(id):
         
     # 修正字段名：使用 cover 而不是 coverUrl
     playlist.cover = cover_url 
+    playlist.coverSrc = filename
     db.session.commit()
     
     # 必须返回响应！
@@ -195,7 +196,7 @@ def upload_playlist():
         artist=data['artist'],
         cover=data.get('cover'), # 默认为 None，前端会显示自动生成的占位符
         description=data.get('description', "Songs from your server."),
-        coverUrl=None
+        coverSrc=None
     )
     db.session.add(new_playlist)
     db.session.commit()
