@@ -7,7 +7,7 @@ MuseFlow 是一个基于 Flask (后端) 和 Vue 3 (前端) 构建的简易音乐
 
 ## 🚀 技术栈
 
-- **后端**: Flask, SQLAlchemy (SQLite), Flask-CORS
+- **后端**: Flask, SQLAlchemy (SQLite), Flask-CORS, Flask-Migrate, TinyTag (MP3元数据)
 - **前端**: Vue 3, Vite, Pinia, Vue Router, Lucide Vue Next
 - **数据库**: SQLite
 
@@ -17,10 +17,14 @@ MuseFlow 是一个基于 Flask (后端) 和 Vue 3 (前端) 构建的简易音乐
 MuseFlow/
 ├── instance/          # SQLite 数据库文件 (music.db)
 ├── python/            # 后端代码
-│   ├── model/         # 数据模型 (Song, SongList)
-│   ├── static/        # 静态资源 (上传的音乐文件)
-│   ├── test.py        # Flask 应用入口
-│   └── extension.py   # 数据库扩展初始化
+│   ├── api/           # API 路由 (Blueprints: playlists, songs, upload)
+│   ├── model/         # 数据模型 (Song, PlayList)
+│   ├── services/      # 业务逻辑层 (FileService, SongService)
+│   ├── static/        # 静态资源 (上传的音乐/封面)
+│   ├── utils/         # 工具类 (统一响应格式)
+│   ├── app.py         # Flask 应用入口
+│   ├── config.py      # 全局配置文件
+│   └── extension.py   # 扩展初始化
 ├── vue-project/       # 前端代码 (Vue 3 + Vite)
 ├── package.json       # 项目根目录配置 (包含并发运行脚本)
 └── README.md          # 项目说明文档
