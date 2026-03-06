@@ -41,24 +41,6 @@ export const usePlayerStore = defineStore('player', () => {
       togglePlay()
       return
     }
-    
-    // 确保 URL 是完整的
-    if (song.url && !song.url.startsWith('http')) {
-       // 如果是相对路径，且不是 blob (刚刚上传的预览)，可能需要拼接后端地址
-       // 这里假设如果是刚刚上传的预览 blob URL，可以直接用
-       // 如果是后端返回的相对路径 '/uploads/xxx.mp3'，需要拼接
-       if (!song.url.startsWith('blob:')) {
-          // 注意：API_BASE_URL 可能包含 /api，如果后端返回的 song.url 已经是 /static/... 开头，
-          // 我们可能需要去掉 /api 或者直接用 window.location.origin (如果是同源)
-          // 简单起见，这里假设 API_BASE_URL 如果是 /api，则后端返回的相对路径也是相对于域名的
-          
-          // 如果 API_BASE_URL 是完整的 URL (http://...)
-         if (song.url && song.url.startsWith('/')) {
-           // 这里的 origin 应该从配置里取，而不是写死
-            song.url = `${new URL(API_BASE_URL).origin}${song.url}`
-          }
-       }
-    }
 
     currentSong.value = song
     

@@ -1,9 +1,10 @@
 import os
 import uuid
-from flask import jsonify, request, current_app
+from flask import request, current_app
 from model.PlayList import Playlist
 from extension import db
 from . import playlists_bp
+from utils.response import success, error
 
 # GET /api/playlists
 @playlists_bp.route('/', methods=['GET'])
@@ -20,37 +21,31 @@ def getPlaylists():
         db.session.commit()
         playlists = [default_playlist]
     
-    return jsonify({
-        "code": 200,
-        "msg": "success",
-        "data": [p.toDict() for p in playlists]
-    })
+    return success(data=[p.toDict() for p in playlists])
 
 # GET /api/playlists/id=<id>
 # TODO: Suggest changing to /api/playlists/<id> later
 @playlists_bp.route('/<int:id>', methods=['GET'])
 def getPlaylistDetail(id):
-     playlist = db.session.get(Playlist, id)
-     if not playlist:
-        return jsonify({"code": 404, "msg": "Playlist not found"}), 404
+    playlist = db.session.get(Playlist, id)
+    if not playlist:
+        return error("Playlist not found", 404)
      
-     songList = [song.toDict() for song in playlist.songs]
+    songList = [song.toDict() for song in playlist.songs]
     
-     return jsonify({
-         "code": 200,
-         "msg": "success",
-         "title": playlist.title,
-         "description": playlist.description,
-         "cover": playlist.cover,
-         "data": songList
-     })
+    return success(
+        data=songList,
+        title=playlist.title,
+        description=playlist.description,
+        cover=playlist.cover
+    )
 
 # POST /api/playlists/upload
 @playlists_bp.route('/upload', methods=['POST'])
 def createPlaylist():
     data = request.json
     if not data or 'title' not in data:
-        return jsonify({"code": 400, "msg": "Missing required fields"}), 400
+        return error("Missing required fields")
 
     new_playlist = Playlist(
         title=data['title'],
@@ -62,22 +57,18 @@ def createPlaylist():
     db.session.add(new_playlist)
     db.session.commit()
     
-    return jsonify({
-        "code": 200,
-        "msg": "Playlist created successfully",
-        "data": new_playlist.toDict()
-    })
+    return success(msg="Playlist created successfully", data=new_playlist.toDict())
 
 # PUT /api/playlists/update/<id>
 @playlists_bp.route('/update/<int:id>', methods=['PUT'])
 def updatePlaylist(id):
     data = request.json
     if not data or 'title' not in data or 'description' not in data:
-        return jsonify({"code": 400, "msg": "Missing required fields"}), 400
+        return error("Missing required fields")
     
     playlist = db.session.get(Playlist, id)
     if not playlist:
-        return jsonify({"code": 404, "msg": "Playlist not found"}), 404
+        return error("Playlist not found", 404)
     
     playlist.title = data['title']
     playlist.description = data['description']
@@ -86,21 +77,17 @@ def updatePlaylist(id):
         
     db.session.commit()
     
-    return jsonify({
-        "code": 200,
-        "msg": "Playlist updated successfully",
-        "data": playlist.toDict()
-    })
+    return success(msg="Playlist updated successfully", data=playlist.toDict())
 
 # POST /api/playlists/upload/cover/<id>
 @playlists_bp.route('/upload/cover/<int:id>', methods=['POST'])
 def uploadPlaylistCover(id):
     if 'file' not in request.files:
-        return jsonify({"code": 400, "msg": "No file part"}), 400
+        return error("No file part")
         
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"code": 400, "msg": "No selected file"}), 400
+        return error("No selected file")
         
     ext = os.path.splitext(file.filename)[1]
     if not ext: ext = '.jpg'
@@ -113,14 +100,10 @@ def uploadPlaylistCover(id):
     
     playlist = db.session.get(Playlist, id)
     if not playlist:
-        return jsonify({"code": 404, "msg": "Playlist not found"}), 404
+        return error("Playlist not found", 404)
         
     playlist.cover = cover_url 
     playlist.coverSrc = filename
     db.session.commit()
     
-    return jsonify({
-        "code": 200, 
-        "msg": "Cover uploaded successfully", 
-        "data": {"coverUrl": cover_url}
-    })
+    return success(msg="Cover uploaded successfully", data={"coverUrl": cover_url})
