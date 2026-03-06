@@ -78,7 +78,7 @@ const fetchPlaylistDetail = async () => {
   isLoading.value = true
   try {
     // 1. 发起请求 (注意 URL 要和后端匹配)
-    const response = await fetch(`${API_BASE_URL}/playlists/id=${route.params.id}`)
+    const response = await fetch(`${API_BASE_URL}/playlists/${route.params.id}`)
     const result = await response.json()
 
     if (result.code === 200) {
@@ -378,7 +378,7 @@ const submitUpload = async () => {
         reject(new Error('Network error'))
       })
 
-      xhr.open('POST', `${API_BASE_URL}/upload/playlistId=${route.params.id}`)
+      xhr.open('POST', `${API_BASE_URL}/upload/${route.params.id}/songs`)
       xhr.send(formData)
     })
 
