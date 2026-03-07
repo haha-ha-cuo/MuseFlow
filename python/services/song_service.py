@@ -85,3 +85,73 @@ class SongService:
         
         db.session.commit()
         return song
+
+    @staticmethod
+    def upload_cover(song_id, cover_file):
+        song = db.session.get(Song, song_id)
+        if not song:
+            return None, "Song not found"
+            
+        if not cover_file:
+            return None, "No file provided"
+            
+        # 1. Delete old cover if exists
+        if song.coverSource:
+            FileService.delete_file(song.coverSource, 'COVER_FOLDER')
+
+        # 2. Save new cover
+        c_name, _, c_url = FileService.save_file(cover_file, 'COVER_FOLDER', '.jpg')
+        
+        # 3. Update song record
+        song.coverSource = c_name
+        song.cover = c_url
+        
+        db.session.commit()
+        
+        return song, None
+
+    @staticmethod
+    def reset_cover(song_id):
+        song = db.session.get(Song, song_id)
+        if not song:
+            return None, "Song not found"
+            
+        if song.coverSource:
+            FileService.delete_file(song.coverSource, 'COVER_FOLDER')
+            
+        song.cover = None
+        song.coverSource = None
+        db.session.commit()
+        
+        return song, None
+
+    @staticmethod
+    def upload_cover(song_id, cover_file):
+        song = db.session.get(Song, song_id)
+        if not song:
+            return None, "Song not found"
+            
+        if not cover_file:
+            return None, "No file provided"
+            
+        # 1. Delete old cover if exists
+        if song.coverSource:
+            # Assumes FileService handles file deletion correctly given folder key
+            # But FileService.delete_file takes (filename, folder_key)
+            # We need to import FileService or use self.FileService? It is imported at top.
+            from flask import current_app # verify import if needed, but likely ok
+            folder = current_app.config['COVER_FOLDER']
+            path = os.path.join(folder, song.coverSource)
+            if os.path.exists(path):
+                os.remove(path)
+
+        # 2. Save new cover
+        c_name, _, c_url = FileService.save_file(cover_file, 'COVER_FOLDER', '.jpg')
+        
+        # 3. Update song record
+        song.coverSource = c_name
+        song.cover = c_url
+        
+        db.session.commit()
+        
+        return song, None

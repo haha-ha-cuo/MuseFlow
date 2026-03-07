@@ -101,9 +101,23 @@ def uploadPlaylistCover(id):
     playlist = db.session.get(Playlist, id)
     if not playlist:
         return error("Playlist not found", 404)
-        
+    if playlist.coverSrc:
+        os.remove(os.path.join(current_app.config['COVER_FOLDER'], playlist.coverSrc))
     playlist.cover = cover_url 
     playlist.coverSrc = filename
     db.session.commit()
     
     return success(msg="Cover uploaded successfully", data={"coverUrl": cover_url})
+
+@playlists_bp.route('/reset/cover/<int:id>', methods=['POST'])
+def resetPlaylistCover(id):
+    playlist = db.session.get(Playlist, id)
+    if not playlist:
+        return error("Playlist not found", 404)
+    if playlist.coverSrc:
+        os.remove(os.path.join(current_app.config['COVER_FOLDER'], playlist.coverSrc))
+    playlist.cover = None
+    playlist.coverSrc = None
+    db.session.commit()
+    
+    return success(msg="Cover reset successfully", data=playlist.toDict())

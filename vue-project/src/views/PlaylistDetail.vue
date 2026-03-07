@@ -121,16 +121,44 @@ const openUploadModal = () => {
 const showEditModal = ref(false)
 const editForm = ref({
   title: '',
-  description: ''
+  description: '',
+  coverFile: null,
+  coverPreview: ''
 })
 
 const openEditModal = () => {
   editForm.value.title = playlistInfo.value.title
   editForm.value.description = playlistInfo.value.description
+  editForm.value.coverFile = null
+  editForm.value.coverPreview = playlistInfo.value.cover
   showEditModal.value = true
 }
 
 const isUpdating = ref(false)
+
+const resetPlaylistCover = async () => {
+  triggerConfirm('Are you sure you want to reset the playlist cover to default?', async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/playlists/reset/cover/${route.params.id}`, {
+        method: 'POST'
+      })
+      const result = await response.json()
+      
+      if (result.code === 200) {
+        playlistInfo.value.cover = ''
+        editForm.value.coverPreview = ''
+        editForm.value.coverFile = null
+        showConfirm.value = false
+        triggerToast('Cover reset successfully')
+      } else {
+        triggerToast('Reset failed: ' + result.msg, 'error')
+      }
+    } catch (error) {
+      console.error('Reset error:', error)
+      triggerToast('Reset error', 'error')
+    }
+  })
+}
 
 const submitEdit = async () => {
   if (!editForm.value.title) {
@@ -142,6 +170,7 @@ const submitEdit = async () => {
   isUpdating.value = true
 
   try {
+    // 1. Update Text Info
     const response = await fetch(`${API_BASE_URL}/playlists/update/${route.params.id}`, {
       method: 'PUT',
       headers: {
@@ -157,6 +186,24 @@ const submitEdit = async () => {
     if (result.code === 200) {
       playlistInfo.value.title = editForm.value.title
       playlistInfo.value.description = editForm.value.description
+      
+      // 2. Upload Cover if selected
+      if (editForm.value.coverFile) {
+          const formData = new FormData()
+          formData.append('file', editForm.value.coverFile)
+          
+          const uploadRes = await fetch(`${API_BASE_URL}/playlists/upload/cover/${route.params.id}`, {
+              method: 'POST',
+              body: formData
+          })
+          const uploadResult = await uploadRes.json()
+          if (uploadResult.code === 200) {
+               playlistInfo.value.cover = uploadResult.data.coverUrl
+          } else {
+              triggerToast('Info updated but cover failed: ' + uploadResult.msg, 'warning')
+          }
+      }
+
       showEditModal.value = false
       triggerToast('Playlist updated successfully')
     } else {
@@ -173,29 +220,59 @@ const submitEdit = async () => {
 const showCropModal = ref(false)
 const cropImage = ref(null)
 const cropCanvas = ref(null)
-const cropSelection = ref({ x: 0, y: 0, size: 200 })
+const CROP_CANVAS_SIZE = 400
+const CROP_VIEWPORT_SIZE = 300 // Size of the fixed square selection box
+
 const isDraggingCrop = ref(false)
 const dragStart = ref({ x: 0, y: 0 })
 
-const openCropModal = (file) => {
-  const reader = new FileReader()
-  reader.onload = (e) => {
+const imageState = ref({
+  x: 0,
+  y: 0,
+  scale: 1,
+  minScale: 0.1
+})
+
+const openCropModal = (file, imageUrl = null) => {
+  if (imageUrl) {
     const img = new Image()
+    img.crossOrigin = "Anonymous"
     img.onload = () => {
       cropImage.value = img
       showCropModal.value = true
-      // Initialize crop selection
-      const size = Math.min(img.width, img.height)
-      cropSelection.value = {
-        x: (img.width - size) / 2,
-        y: (img.height - size) / 2,
-        size: size
-      }
-      setTimeout(() => drawCropCanvas(), 100)
+      initCropState(img)
     }
-    img.src = e.target.result
+    img.src = imageUrl
+  } else if (file) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        cropImage.value = img
+        showCropModal.value = true
+        initCropState(img)
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
   }
-  reader.readAsDataURL(file)
+}
+
+const initCropState = (img) => {
+  // Initialize scale to FILL the viewport (cover behavior)
+  // We want the smallest dimension of the image to match the viewport size
+  const scaleX = CROP_VIEWPORT_SIZE / img.width
+  const scaleY = CROP_VIEWPORT_SIZE / img.height
+  const initialScale = Math.max(scaleX, scaleY)
+  
+  imageState.value = {
+    scale: initialScale,
+    minScale: initialScale * 0.5, // Allow zooming out a bit more
+    x: (CROP_CANVAS_SIZE - img.width * initialScale) / 2,
+    y: (CROP_CANVAS_SIZE - img.height * initialScale) / 2
+  }
+  
+  setTimeout(() => drawCropCanvas(), 100)
 }
 
 const drawCropCanvas = () => {
@@ -203,38 +280,56 @@ const drawCropCanvas = () => {
   const ctx = cropCanvas.value.getContext('2d')
   const canvas = cropCanvas.value
   const img = cropImage.value
+  const state = imageState.value
 
-  // Set canvas size to match image size (scaled down if necessary for display)
-  const maxWidth = 500
-  const scale = Math.min(1, maxWidth / img.width)
-  canvas.width = img.width * scale
-  canvas.height = img.height * scale
+  // Set fixed canvas size
+  canvas.width = CROP_CANVAS_SIZE
+  canvas.height = CROP_CANVAS_SIZE
 
+  // Clear
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-  // Draw overlay
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+  
+  // Fill background
+  ctx.fillStyle = '#1a1a1a'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  // Draw crop selection (clear the overlay in the selection area)
-  const sel = cropSelection.value
-  ctx.clearRect(sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale)
+  // Draw Image with transform
   ctx.drawImage(
     img, 
-    sel.x, sel.y, sel.size, sel.size, 
-    sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale
+    state.x, 
+    state.y, 
+    img.width * state.scale, 
+    img.height * state.scale
   )
+
+  // Draw Overlay (Semi-transparent black)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
   
-  // Draw selection border
+  // Calculate viewport rect
+  const vpX = (CROP_CANVAS_SIZE - CROP_VIEWPORT_SIZE) / 2
+  const vpY = (CROP_CANVAS_SIZE - CROP_VIEWPORT_SIZE) / 2
+  
+  // Draw 4 rectangles around the viewport
+  // Top
+  ctx.fillRect(0, 0, canvas.width, vpY)
+  // Bottom
+  ctx.fillRect(0, vpY + CROP_VIEWPORT_SIZE, canvas.width, canvas.height - (vpY + CROP_VIEWPORT_SIZE))
+  // Left
+  ctx.fillRect(0, vpY, vpX, CROP_VIEWPORT_SIZE)
+  // Right
+  ctx.fillRect(vpX + CROP_VIEWPORT_SIZE, vpY, canvas.width - (vpX + CROP_VIEWPORT_SIZE), CROP_VIEWPORT_SIZE)
+  
+  // Draw Viewport Border
   ctx.strokeStyle = '#fff'
   ctx.lineWidth = 2
-  ctx.strokeRect(sel.x * scale, sel.y * scale, sel.size * scale, sel.size * scale)
+  ctx.strokeRect(vpX, vpY, CROP_VIEWPORT_SIZE, CROP_VIEWPORT_SIZE)
 }
 
 const handleCropMouseDown = (e) => {
   isDraggingCrop.value = true
   dragStart.value = { x: e.clientX, y: e.clientY }
+  window.addEventListener('mousemove', handleCropMouseMove)
+  window.addEventListener('mouseup', handleCropMouseUp)
 }
 
 const handleCropMouseMove = (e) => {
@@ -242,51 +337,88 @@ const handleCropMouseMove = (e) => {
   const dx = e.clientX - dragStart.value.x
   const dy = e.clientY - dragStart.value.y
   dragStart.value = { x: e.clientX, y: e.clientY }
-
-  const canvas = cropCanvas.value
-  const scale = canvas.width / cropImage.value.width
   
-  // Update selection position
-  cropSelection.value.x += dx / scale
-  cropSelection.value.y += dy / scale
+  // Move image instead of selection
+  imageState.value.x += dx
+  imageState.value.y += dy
 
-  // Clamp selection within image bounds
-  const sel = cropSelection.value
-  const img = cropImage.value
-  sel.x = Math.max(0, Math.min(sel.x, img.width - sel.size))
-  sel.y = Math.max(0, Math.min(sel.y, img.height - sel.size))
+  drawCropCanvas()
+}
 
+const handleCropWheel = (e) => {
+  // Zoom logic
+  const zoomSpeed = 0.001
+  const delta = -e.deltaY * zoomSpeed
+  const newScale = Math.max(imageState.value.minScale, imageState.value.scale + delta)
+  
+  // Zoom centered on canvas center (approximate)
+  // To do precise mouse-centered zoom requires more math, center-zoom is usually fine for avatars
+  const scaleRatio = newScale / imageState.value.scale
+  const centerX = CROP_CANVAS_SIZE / 2
+  const centerY = CROP_CANVAS_SIZE / 2
+  
+  imageState.value.x = centerX - (centerX - imageState.value.x) * scaleRatio
+  imageState.value.y = centerY - (centerY - imageState.value.y) * scaleRatio
+  imageState.value.scale = newScale
+  
   drawCropCanvas()
 }
 
 const handleCropMouseUp = () => {
   isDraggingCrop.value = false
+  window.removeEventListener('mousemove', handleCropMouseMove)
+  window.removeEventListener('mouseup', handleCropMouseUp)
 }
 
 const confirmCrop = () => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  const sel = cropSelection.value
   const img = cropImage.value
-
-  canvas.width = 300 // Target size for cover
+  const state = imageState.value
+  
+  // Output size
+  canvas.width = 300
   canvas.height = 300
-
+  
+  // Viewport position on the crop canvas
+  const vpX = (CROP_CANVAS_SIZE - CROP_VIEWPORT_SIZE) / 2
+  const vpY = (CROP_CANVAS_SIZE - CROP_VIEWPORT_SIZE) / 2
+  
+  // Calculate the source rectangle on the original image
+  // The viewport (vpX, vpY) corresponds to some point on the image (state.x, state.y)
+  // Relationship: CanvasPoint = ImagePoint * scale + offset
+  // So: ImagePoint = (CanvasPoint - offset) / scale
+  
+  const sourceX = (vpX - state.x) / state.scale
+  const sourceY = (vpY - state.y) / state.scale
+  const sourceW = CROP_VIEWPORT_SIZE / state.scale
+  const sourceH = CROP_VIEWPORT_SIZE / state.scale
+  
   ctx.drawImage(
     img,
-    sel.x, sel.y, sel.size, sel.size,
-    0, 0, canvas.width, canvas.height
+    sourceX, sourceY, sourceW, sourceH, // Source rect
+    0, 0, canvas.width, canvas.height   // Dest rect
   )
 
   canvas.toBlob((blob) => {
     const file = new File([blob], "cover.jpg", { type: "image/jpeg" })
     
-    // 如果是在"上传歌曲"的模态框里
+    // 1. Upload Song Modal
     if (showUploadModal.value) {
       uploadForm.value.coverFile = file
       uploadForm.value.coverPreview = URL.createObjectURL(blob)
     } 
-    // 如果是直接点击封面更改
+    // 2. Edit Playlist Modal
+    else if (showEditModal.value) {
+      editForm.value.coverFile = file
+      editForm.value.coverPreview = URL.createObjectURL(blob)
+    }
+    // 3. Edit Song Modal
+    else if (showEditSongModal.value) {
+      editSongForm.value.coverFile = file
+      editSongForm.value.coverPreview = URL.createObjectURL(blob)
+    }
+    // 4. Direct Playlist Cover Click (Main Page)
     else {
       uploadCover(file)
     }
@@ -319,6 +451,8 @@ const uploadCover = async (file) => {
   }
 }
 
+const currentRawCoverFile = ref(null)
+
 const handleFileSelect = (event, type) => {
   const file = event.target.files[0]
   if (!file) return
@@ -330,6 +464,7 @@ const handleFileSelect = (event, type) => {
     }
     uploadForm.value.audioPreview = file.name
   } else if (type === 'cover') {
+    currentRawCoverFile.value = file
     openCropModal(file)
     event.target.value = '' // Reset input
   }
@@ -473,14 +608,44 @@ const showEditSongModal = ref(false)
 const editSongForm = ref({
   id: null,
   title: '',
-  artist: ''
+  artist: '',
+  coverFile: null,
+  coverPreview: ''
 })
 
 const openEditSongModal = (song) => {
   editSongForm.value.id = song.id
   editSongForm.value.title = song.title
   editSongForm.value.artist = song.artist
+  editSongForm.value.coverFile = null
+  editSongForm.value.coverPreview = song.cover
   showEditSongModal.value = true
+}
+
+const resetSongCover = async () => {
+  triggerConfirm('Are you sure you want to reset the song cover to default?', async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/songs/reset/cover/${editSongForm.value.id}`, {
+        method: 'POST'
+      })
+      const result = await response.json()
+      
+      if (result.code === 200) {
+        const song = playlistInfo.value.songs.find(s => s.id === editSongForm.value.id)
+        if (song) song.cover = ''
+        
+        editSongForm.value.coverPreview = ''
+        editSongForm.value.coverFile = null
+        showConfirm.value = false
+        triggerToast('Cover reset successfully')
+      } else {
+        triggerToast('Reset failed: ' + result.msg, 'error')
+      }
+    } catch (error) {
+      console.error('Reset error:', error)
+      triggerToast('Reset error', 'error')
+    }
+  })
 }
 
 const isUpdatingSong = ref(false)
@@ -495,6 +660,7 @@ const submitEditSong = async () => {
   isUpdatingSong.value = true
 
   try {
+    // 1. Update Text Info
     const response = await fetch(`${API_BASE_URL}/songs/update/${editSongForm.value.id}`, {
       method: 'PUT',
       headers: {
@@ -514,6 +680,24 @@ const submitEditSong = async () => {
         song.title = editSongForm.value.title
         song.artist = editSongForm.value.artist
       }
+
+      // 2. Upload Cover if selected
+      if (editSongForm.value.coverFile) {
+          const formData = new FormData()
+          formData.append('file', editSongForm.value.coverFile)
+          
+          const uploadRes = await fetch(`${API_BASE_URL}/songs/upload/cover/${editSongForm.value.id}`, {
+              method: 'POST',
+              body: formData
+          })
+          const uploadResult = await uploadRes.json()
+          if (uploadResult.code === 200) {
+               if (song) song.cover = uploadResult.data.coverUrl
+          } else {
+               triggerToast('Info updated but cover failed: ' + uploadResult.msg, 'warning')
+          }
+      }
+
       showEditSongModal.value = false
       triggerToast('Song updated successfully')
     } else {
@@ -632,6 +816,27 @@ onMounted(() => {
             <input type="text" v-model="editForm.description" placeholder="Enter description" />
           </div>
 
+          <div class="form-group">
+            <label>Cover Image</label>
+            <div class="file-input-wrapper">
+               <button class="file-select-btn">
+                {{ editForm.coverFile ? 'Image Selected' : 'Change Cover' }}
+              </button>
+              <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
+            </div>
+            <div v-if="editForm.coverFile" class="preview-actions">
+              <span class="file-name">Image Selected</span>
+              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+            </div>
+            <div v-else-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="preview-actions">
+               <span class="file-name">Current Cover</span>
+               <a href="#" @click.prevent="openCropModal(null, editForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
+            </div>
+             <button v-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetPlaylistCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
+                Reset Cover
+            </button>
+          </div>
+
           <div class="modal-actions">
             <button class="cancel-btn" @click="showEditModal = false" :disabled="isUpdating">Cancel</button>
             <button class="submit-btn" @click="submitEdit" :disabled="isUpdating">
@@ -671,8 +876,13 @@ onMounted(() => {
               </button>
               <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
             </div>
-            <div v-if="uploadForm.coverPreview" class="preview-cover">
-              <img :src="uploadForm.coverPreview" />
+            <div v-if="uploadForm.coverFile" class="preview-actions">
+              <span class="file-name">Image Selected</span>
+              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+            </div>
+            <div v-else-if="uploadForm.coverPreview && !uploadForm.coverPreview.includes('placehold.co')" class="preview-actions">
+               <span class="file-name">Current Cover</span>
+               <a href="#" @click.prevent="openCropModal(null, uploadForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
             </div>
           </div>
 
@@ -736,6 +946,27 @@ onMounted(() => {
             <input type="text" v-model="editSongForm.artist" placeholder="Enter artist name" />
           </div>
 
+          <div class="form-group">
+            <label>Cover Image</label>
+            <div class="file-input-wrapper">
+               <button class="file-select-btn">
+                {{ editSongForm.coverFile ? 'Image Selected' : 'Change Cover' }}
+              </button>
+              <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
+            </div>
+            <div v-if="editSongForm.coverFile" class="preview-actions">
+              <span class="file-name">Image Selected</span>
+              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+            </div>
+            <div v-else-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="preview-actions">
+               <span class="file-name">Current Cover</span>
+               <a href="#" @click.prevent="openCropModal(null, editSongForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
+            </div>
+            <button v-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetSongCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
+                Reset Cover
+            </button>
+          </div>
+
           <div class="modal-actions">
             <button class="cancel-btn" @click="showEditSongModal = false" :disabled="isUpdatingSong">Cancel</button>
             <button class="submit-btn" @click="submitEditSong" :disabled="isUpdatingSong">
@@ -748,11 +979,17 @@ onMounted(() => {
 
     <!-- Crop Modal -->
     <Transition name="fade">
-      <div v-if="showCropModal" class="modal-overlay" style="z-index: 3000;" @mouseup="handleCropMouseUp" @mousemove="handleCropMouseMove">
+      <div v-if="showCropModal" class="modal-overlay" style="z-index: 3000;">
         <div class="modal-content crop-dialog">
           <h3>Crop Cover Image</h3>
           <div class="crop-container">
-             <canvas ref="cropCanvas" @mousedown="handleCropMouseDown"></canvas>
+             <canvas 
+               ref="cropCanvas" 
+               @mousedown.prevent="handleCropMouseDown" 
+               @wheel.prevent="handleCropWheel"
+               style="cursor: grab;"
+             ></canvas>
+             <div class="crop-hint">Scroll to zoom, drag to move</div>
           </div>
           <div class="modal-actions">
             <button class="cancel-btn" @click="showCropModal = false">Cancel</button>
@@ -1030,6 +1267,21 @@ onMounted(() => {
   border: 1px solid var(--color-border);
 }
 
+.reset-btn {
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reset-btn:hover {
+  background: var(--color-background-secondary);
+  color: #e00;
+  border-color: #e00;
+}
+
 .modal-content h3 {
   margin-bottom: 24px;
   font-size: 20px;
@@ -1090,6 +1342,24 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.preview-actions {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.file-name {
+  color: var(--color-text-secondary);
+}
+
+.preview-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .preview-cover {
   margin-top: 10px;
   width: 60px;
@@ -1102,6 +1372,27 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.crop-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.crop-hint {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+.crop-hint {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  margin-top: 8px;
 }
 
 .modal-actions {
