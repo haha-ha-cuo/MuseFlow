@@ -3,6 +3,7 @@ import uuid
 from flask import request, current_app
 from model.PlayList import Playlist
 from extension import db
+from services.file_service import FileService
 from . import playlists_bp
 from utils.response import success, error
 
@@ -13,8 +14,8 @@ def getPlaylists():
     if not playlists:
         default_playlist = Playlist(
             title="My Playlist",
-            artist="Apple Music",
-            cover="https://is1-ssl.mzstatic.com/image/thumb/Features122/v4/71/3b/38/713b381e-1285-d602-0c9f-39589f816c7f/source/600x600bb.jpg",
+            artist="first list",
+            cover=None,
             description="Songs from your server."
         )
         db.session.add(default_playlist)
@@ -115,9 +116,28 @@ def resetPlaylistCover(id):
     if not playlist:
         return error("Playlist not found", 404)
     if playlist.coverSrc:
-        os.remove(os.path.join(current_app.config['COVER_FOLDER'], playlist.coverSrc))
+        FileService.delete_file(playlist.coverSrc, 'COVER_FOLDER')
     playlist.cover = None
     playlist.coverSrc = None
     db.session.commit()
     
     return success(msg="Cover reset successfully", data=playlist.toDict())
+
+@playlists_bp.route('/delete/<int:id>', methods=['DELETE'])
+def deletePlaylist(id):
+    playlist = db.session.get(Playlist, id)
+    if not playlist:
+        return error("Playlist not found", 404)
+    for song in playlist.songs:
+        if song.coverSource:
+            FileService.delete_file(song.coverSource, 'COVER_FOLDER')
+        if song.source:
+            FileService.delete_file(song.source, 'UPLOAD_FOLDER')
+        db.session.delete(song)
+        db.session.commit()
+    if playlist.coverSrc:
+        FileService.delete_file(playlist.coverSrc, 'COVER_FOLDER')
+    db.session.delete(playlist)
+    db.session.commit()
+    
+    return success(msg="Playlist deleted successfully")

@@ -4,6 +4,7 @@ import { usePlayerStore } from '../stores/player'
 import { Play, Upload, Plus, Music, Trash2, X, AlertCircle, CheckCircle, ArrowLeft, Edit } from 'lucide-vue-next'
 import { ref, onMounted } from 'vue'
 import { API_BASE_URL } from '@/config'
+import BaseModal from '../components/BaseModal.vue'
 
 // Toast Notification System
 const showToast = ref(false)
@@ -100,6 +101,43 @@ const fetchPlaylistDetail = async () => {
   }
 }
 
+
+const confirmDeletePlaylist = () => {
+  triggerConfirm('Are you sure you want to delete this playlist? This action cannot be undone.', handleDeletePlaylist)
+}
+
+const showSuccessModal = ref(false)
+const successMessage = ref('')
+
+const handleDeletePlaylist = async () => {
+  if (isDeleting.value) return
+  isDeleting.value = true
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/playlists/delete/${route.params.id}`, {
+      method: 'DELETE'
+    })
+    const result = await response.json()
+    
+    if (result.code === 200) {
+      showConfirm.value = false
+      successMessage.value = 'Playlist deleted successfully!'
+      showSuccessModal.value = true
+    } else {
+      triggerToast('Delete failed: ' + result.msg, 'error')
+    }
+  } catch (error) {
+    console.error('Delete error:', error)
+    triggerToast('Delete error, please check backend', 'error')
+  } finally {
+    isDeleting.value = false
+  }
+}
+
+const handleSuccessClose = () => {
+  showSuccessModal.value = false
+  router.push('/')
+}
 
 const handlePlay = (song) => {
   playerStore.playlist = [...playlistInfo.value.songs] 
@@ -733,6 +771,7 @@ onMounted(() => {
           <button class="back-btn" @click="router.push('/')">
             <ArrowLeft size="24" />
           </button>
+          
           <div class="cover-container">
             <!-- 判断逻辑: 有封面且加载未出错时显示图片，否则显示默认占位符 -->
         <img 
@@ -749,9 +788,9 @@ onMounted(() => {
 
         <div class="cover-overlay">
           <Upload color="white" size="32" />
-          <span>Change Cover</span>
+          <span>{{ $t('playlist.changeCover') }}</span>
         </div>
-        <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" class="cover-input" title="Change Cover" />
+        <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" class="cover-input" :title="$t('playlist.changeCover')" />
       </div>
       
       <div class="info">
@@ -763,12 +802,16 @@ onMounted(() => {
           </button>
 
           <button class="secondary-btn" @click="openEditModal">
-            <Edit size="18" /> Edit Info
+            <Edit size="18" /> {{ $t('playlist.editInfo') }}
           </button>
           
+          <button class="secondary-btn delete-playlist-btn" @click="confirmDeletePlaylist" :title="$t('playlist.deletePlaylist')">
+            <Trash2 size="18" />
+          </button>
+
           <div class="upload-song-wrapper">
             <button class="secondary-btn" @click="openUploadModal">
-              <Plus size="18" /> Add Songs
+              <Plus size="18" /> {{ $t('playlist.addSongs') }}
             </button>
           </div>
         </div>
@@ -784,121 +827,133 @@ onMounted(() => {
       </div>
     </Transition>
 
-    <!-- Custom Confirm Dialog -->
-    <Transition name="fade">
-      <div v-if="showConfirm" class="modal-overlay" style="z-index: 2000;">
-        <div class="modal-content confirm-dialog">
-          <h3>Confirm Action</h3>
-          <p>{{ confirmMessage }}</p>
-          <div class="modal-actions">
-            <button class="cancel-btn" @click="showConfirm = false" :disabled="isDeleting">Cancel</button>
-            <button class="submit-btn delete-confirm-btn" @click="handleConfirm" :disabled="isDeleting">
-              {{ isDeleting ? 'Deleting...' : 'Confirm' }}
-            </button>
-          </div>
-        </div>
+    <!-- Success Modal -->
+    <BaseModal
+      :isOpen="showSuccessModal"
+      title="Success"
+      @close="handleSuccessClose"
+      style="z-index: 2000;"
+    >
+      <div class="success-content">
+        <CheckCircle size="48" color="#10b981" />
+        <p>{{ successMessage }}</p>
       </div>
-    </Transition>
+      <template #footer>
+        <button class="submit-btn" @click="handleSuccessClose">OK</button>
+      </template>
+    </BaseModal>
+
+    <!-- Custom Confirm Dialog -->
+    <BaseModal
+      :isOpen="showConfirm"
+      title="Confirm Action"
+      @close="showConfirm = false"
+      style="z-index: 2000;"
+    >
+      <p>{{ confirmMessage }}</p>
+      <template #footer>
+        <button class="cancel-btn" @click="showConfirm = false" :disabled="isDeleting">Cancel</button>
+        <button class="submit-btn delete-confirm-btn" @click="handleConfirm" :disabled="isDeleting">
+          {{ isDeleting ? 'Deleting...' : 'Confirm' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Edit Playlist Info Modal -->
-    <Transition name="fade">
-      <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
-        <div class="modal-content">
-          <h3>Edit Playlist Info</h3>
-          
-          <div class="form-group">
-            <label>Playlist Title</label>
-            <input type="text" v-model="editForm.title" placeholder="Enter playlist title" />
-          </div>
-
-          <div class="form-group">
-            <label>Description</label>
-            <input type="text" v-model="editForm.description" placeholder="Enter description" />
-          </div>
-
-          <div class="form-group">
-            <label>Cover Image</label>
-            <div class="file-input-wrapper">
-               <button class="file-select-btn">
-                {{ editForm.coverFile ? 'Image Selected' : 'Change Cover' }}
-              </button>
-              <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
-            </div>
-            <div v-if="editForm.coverFile" class="preview-actions">
-              <span class="file-name">Image Selected</span>
-              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-            <div v-else-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="preview-actions">
-               <span class="file-name">Current Cover</span>
-               <a href="#" @click.prevent="openCropModal(null, editForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-             <button v-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetPlaylistCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
-                Reset Cover
-            </button>
-          </div>
-
-          <div class="modal-actions">
-            <button class="cancel-btn" @click="showEditModal = false" :disabled="isUpdating">Cancel</button>
-            <button class="submit-btn" @click="submitEdit" :disabled="isUpdating">
-              {{ isUpdating ? 'Saving...' : 'Save Changes' }}
-            </button>
-          </div>
-        </div>
+    <BaseModal
+      :isOpen="showEditModal"
+      title="Edit Playlist Info"
+      @close="showEditModal = false"
+    >
+      <div class="form-group">
+        <label>Playlist Title</label>
+        <input type="text" v-model="editForm.title" placeholder="Enter playlist title" />
       </div>
-    </Transition>
+
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" v-model="editForm.description" placeholder="Enter description" />
+      </div>
+
+      <div class="form-group">
+        <label>Cover Image</label>
+        <div class="file-input-wrapper">
+            <button class="file-select-btn">
+            {{ editForm.coverFile ? 'Image Selected' : 'Change Cover' }}
+          </button>
+          <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
+        </div>
+        <div v-if="editForm.coverFile" class="preview-actions">
+          <span class="file-name">Image Selected</span>
+          <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+        <div v-else-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="preview-actions">
+            <span class="file-name">Current Cover</span>
+            <a href="#" @click.prevent="openCropModal(null, editForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+          <button v-if="editForm.coverPreview && !editForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetPlaylistCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
+            Reset Cover
+        </button>
+      </div>
+
+      <template #footer>
+        <button class="cancel-btn" @click="showEditModal = false" :disabled="isUpdating">Cancel</button>
+        <button class="submit-btn" @click="submitEdit" :disabled="isUpdating">
+          {{ isUpdating ? 'Saving...' : 'Save Changes' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Upload Modal -->
-    <Transition name="fade">
-      <div v-if="showUploadModal" class="modal-overlay" @click.self="showUploadModal = false">
-        <div class="modal-content">
-          <h3>Upload New Song</h3>
-          
-          <div class="form-group">
-            <label>Song Name</label>
-            <input type="text" v-model="uploadForm.name" placeholder="Enter song name" />
-          </div>
+    <BaseModal
+      :isOpen="showUploadModal"
+      title="Upload New Song"
+      @close="showUploadModal = false"
+    >
+      <div class="form-group">
+        <label>Song Name</label>
+        <input type="text" v-model="uploadForm.name" placeholder="Enter song name" />
+      </div>
 
-          <div class="form-group">
-            <label>Audio File</label>
-            <div class="file-input-wrapper">
-              <button class="file-select-btn">
-                {{ uploadForm.audioPreview || 'Choose Audio File' }}
-              </button>
-              <input type="file" @change="(e) => handleFileSelect(e, 'audio')" accept="audio/*" />
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Cover Image (Optional)</label>
-            <div class="file-input-wrapper">
-               <button class="file-select-btn">
-                {{ uploadForm.coverFile ? 'Image Selected' : 'Choose Cover Image' }}
-              </button>
-              <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
-            </div>
-            <div v-if="uploadForm.coverFile" class="preview-actions">
-              <span class="file-name">Image Selected</span>
-              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-            <div v-else-if="uploadForm.coverPreview && !uploadForm.coverPreview.includes('placehold.co')" class="preview-actions">
-               <span class="file-name">Current Cover</span>
-               <a href="#" @click.prevent="openCropModal(null, uploadForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-          </div>
-
-          <div class="modal-actions">
-            <button class="cancel-btn" @click="showUploadModal = false" :disabled="isUploading">Cancel</button>
-            <button class="submit-btn" @click="submitUpload" :disabled="isUploading">
-              {{ isUploading ? `Uploading ${uploadProgress}%` : 'Upload' }}
-            </button>
-          </div>
-          
-          <div v-if="isUploading" class="upload-progress-bar">
-            <div class="upload-progress-fill" :style="{ width: uploadProgress + '%' }"></div>
-          </div>
+      <div class="form-group">
+        <label>Audio File</label>
+        <div class="file-input-wrapper">
+          <button class="file-select-btn">
+            {{ uploadForm.audioPreview || 'Choose Audio File' }}
+          </button>
+          <input type="file" @change="(e) => handleFileSelect(e, 'audio')" accept="audio/*" />
         </div>
       </div>
-    </Transition>
+
+      <div class="form-group">
+        <label>Cover Image (Optional)</label>
+        <div class="file-input-wrapper">
+            <button class="file-select-btn">
+            {{ uploadForm.coverFile ? 'Image Selected' : 'Choose Cover Image' }}
+          </button>
+          <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
+        </div>
+        <div v-if="uploadForm.coverFile" class="preview-actions">
+          <span class="file-name">Image Selected</span>
+          <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+        <div v-else-if="uploadForm.coverPreview && !uploadForm.coverPreview.includes('placehold.co')" class="preview-actions">
+            <span class="file-name">Current Cover</span>
+            <a href="#" @click.prevent="openCropModal(null, uploadForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+      </div>
+      
+      <div v-if="isUploading" class="upload-progress-bar">
+        <div class="upload-progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+      </div>
+
+      <template #footer>
+        <button class="cancel-btn" @click="showUploadModal = false" :disabled="isUploading">Cancel</button>
+        <button class="submit-btn" @click="submitUpload" :disabled="isUploading">
+          {{ isUploading ? `Uploading ${uploadProgress}%` : 'Upload' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <div class="song-list">
       <div 
@@ -931,73 +986,71 @@ onMounted(() => {
       </div>
     </Transition>
     <!-- Edit Song Info Modal -->
-    <Transition name="fade">
-      <div v-if="showEditSongModal" class="modal-overlay" @click.self="showEditSongModal = false">
-        <div class="modal-content">
-          <h3>Edit Song Info</h3>
-          
-          <div class="form-group">
-            <label>Song Title</label>
-            <input type="text" v-model="editSongForm.title" placeholder="Enter song title" />
-          </div>
-
-          <div class="form-group">
-            <label>Artist</label>
-            <input type="text" v-model="editSongForm.artist" placeholder="Enter artist name" />
-          </div>
-
-          <div class="form-group">
-            <label>Cover Image</label>
-            <div class="file-input-wrapper">
-               <button class="file-select-btn">
-                {{ editSongForm.coverFile ? 'Image Selected' : 'Change Cover' }}
-              </button>
-              <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
-            </div>
-            <div v-if="editSongForm.coverFile" class="preview-actions">
-              <span class="file-name">Image Selected</span>
-              <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-            <div v-else-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="preview-actions">
-               <span class="file-name">Current Cover</span>
-               <a href="#" @click.prevent="openCropModal(null, editSongForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
-            </div>
-            <button v-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetSongCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
-                Reset Cover
-            </button>
-          </div>
-
-          <div class="modal-actions">
-            <button class="cancel-btn" @click="showEditSongModal = false" :disabled="isUpdatingSong">Cancel</button>
-            <button class="submit-btn" @click="submitEditSong" :disabled="isUpdatingSong">
-              {{ isUpdatingSong ? 'Saving...' : 'Save Changes' }}
-            </button>
-          </div>
-        </div>
+    <BaseModal
+      :isOpen="showEditSongModal"
+      title="Edit Song Info"
+      @close="showEditSongModal = false"
+    >
+      <div class="form-group">
+        <label>Song Title</label>
+        <input type="text" v-model="editSongForm.title" placeholder="Enter song title" />
       </div>
-    </Transition>
+
+      <div class="form-group">
+        <label>Artist</label>
+        <input type="text" v-model="editSongForm.artist" placeholder="Enter artist name" />
+      </div>
+
+      <div class="form-group">
+        <label>Cover Image</label>
+        <div class="file-input-wrapper">
+            <button class="file-select-btn">
+            {{ editSongForm.coverFile ? 'Image Selected' : 'Change Cover' }}
+          </button>
+          <input type="file" @change="(e) => handleFileSelect(e, 'cover')" accept="image/*" />
+        </div>
+        <div v-if="editSongForm.coverFile" class="preview-actions">
+          <span class="file-name">Image Selected</span>
+          <a href="#" @click.prevent="openCropModal(currentRawCoverFile)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+        <div v-else-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="preview-actions">
+            <span class="file-name">Current Cover</span>
+            <a href="#" @click.prevent="openCropModal(null, editSongForm.coverPreview)" class="preview-link">Preview / Edit Crop</a>
+        </div>
+        <button v-if="editSongForm.coverPreview && !editSongForm.coverPreview.includes('placehold.co')" class="reset-btn" @click="resetSongCover" style="margin-top: 8px; font-size: 12px; padding: 4px 8px;">
+            Reset Cover
+        </button>
+      </div>
+
+      <template #footer>
+        <button class="cancel-btn" @click="showEditSongModal = false" :disabled="isUpdatingSong">Cancel</button>
+        <button class="submit-btn" @click="submitEditSong" :disabled="isUpdatingSong">
+          {{ isUpdatingSong ? 'Saving...' : 'Save Changes' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- Crop Modal -->
-    <Transition name="fade">
-      <div v-if="showCropModal" class="modal-overlay" style="z-index: 3000;">
-        <div class="modal-content crop-dialog">
-          <h3>Crop Cover Image</h3>
-          <div class="crop-container">
-             <canvas 
-               ref="cropCanvas" 
-               @mousedown.prevent="handleCropMouseDown" 
-               @wheel.prevent="handleCropWheel"
-               style="cursor: grab;"
-             ></canvas>
-             <div class="crop-hint">Scroll to zoom, drag to move</div>
-          </div>
-          <div class="modal-actions">
-            <button class="cancel-btn" @click="showCropModal = false">Cancel</button>
-            <button class="submit-btn" @click="confirmCrop">Confirm Crop</button>
-          </div>
-        </div>
+    <BaseModal 
+      :isOpen="showCropModal" 
+      title="Crop Cover Image" 
+      @close="showCropModal = false"
+    >
+      <div class="crop-container">
+          <canvas 
+            ref="cropCanvas" 
+            @mousedown.prevent="handleCropMouseDown" 
+            @wheel.prevent="handleCropWheel"
+            style="cursor: grab;"
+          ></canvas>
+          <div class="crop-hint">Scroll to zoom, drag to move</div>
       </div>
-    </Transition>
+      
+      <template #footer>
+        <button class="cancel-btn" @click="showCropModal = false">Cancel</button>
+        <button class="submit-btn" @click="confirmCrop">Confirm Crop</button>
+      </template>
+    </BaseModal>
 
   </div>
 </template>
@@ -1199,6 +1252,11 @@ onMounted(() => {
   background: var(--color-border);
 }
 
+.delete-playlist-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
 .actions {
   display: flex;
   gap: 12px;
@@ -1243,29 +1301,7 @@ onMounted(() => {
 }
 
 /* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
-}
-
-.modal-content {
-  background: var(--color-background);
-  padding: 32px;
-  border-radius: 16px;
-  width: 400px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-}
+/* Removed modal-overlay, modal-content, modal-actions styles as they are now in BaseModal */
 
 .reset-btn {
   background: transparent;
@@ -1282,11 +1318,7 @@ onMounted(() => {
   border-color: #e00;
 }
 
-.modal-content h3 {
-  margin-bottom: 24px;
-  font-size: 20px;
-  font-weight: 600;
-}
+/* modal-content h3 removed */
 
 .form-group {
   margin-bottom: 20px;
@@ -1395,19 +1427,7 @@ onMounted(() => {
   margin-top: 8px;
 }
 
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 32px;
-}
-
-.cancel-btn {
-  padding: 8px 16px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
+/* modal-actions and cancel-btn removed */
 
 .submit-btn {
   padding: 8px 20px;
@@ -1507,6 +1527,23 @@ onMounted(() => {
 
 .delete-btn:hover {
   color: #ff3b30;
+}
+
+.success-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+  gap: 16px;
+  text-align: center;
+}
+
+.success-content p {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--color-text);
+  margin: 0;
 }
 
 /* Toast Styles */

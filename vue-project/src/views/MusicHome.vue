@@ -81,10 +81,10 @@ const goToPlaylist = (id) => {
 <template>
   <div class="home-page">
     <div class="header-actions">
-      <h1>Listen Now</h1>
+      <h1>{{ $t('home.listenNow') }}</h1>
       <button @click="openCreateModal" class="add-btn">
         <Plus :size="20" />
-        New Playlist
+        {{ $t('home.newPlaylist') }}
       </button>
     </div>
     
@@ -100,20 +100,20 @@ const goToPlaylist = (id) => {
     <!-- 创建歌单模态框 -->
     <BaseModal 
       :isOpen="showCreateModal" 
-      title="Create New Playlist" 
+      :title="$t('home.createPlaylist')" 
       @close="showCreateModal = false"
     >
       <input 
         v-model="newPlaylistTitle" 
-        placeholder="Playlist Name" 
+        :placeholder="$t('home.playlistName')" 
         class="modal-input"
         @keyup.enter="confirmCreatePlaylist"
         autofocus
       />
       <template #footer>
-        <button class="btn-cancel" @click="showCreateModal = false">Cancel</button>
+        <button class="btn-cancel" @click="showCreateModal = false">{{ $t('common.cancel') }}</button>
         <button class="btn-confirm" @click="confirmCreatePlaylist" :disabled="!newPlaylistTitle.trim() || isCreating">
-          {{ isCreating ? 'Creating...' : 'Create' }}
+          {{ isCreating ? $t('common.saving') : $t('common.confirm') }}
         </button>
       </template>
     </BaseModal>

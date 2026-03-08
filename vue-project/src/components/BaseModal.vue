@@ -8,7 +8,7 @@ defineEmits(['close'])
 </script>
 
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="$emit('close')">
+  <div v-if="isOpen" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
         <h3>{{ title }}</h3>
